@@ -1,0 +1,93 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               Int              @id @default(autoincrement())
+  email            String           @unique
+  password         String
+  name             String?
+  balance          Float            @default(0)
+  currency         String           @default("USD")
+  profilePicture   String?          @db.Text
+  resetToken       String?
+  resetTokenExpiry DateTime?
+  portfolio        Portfolio[]
+  transactions     Transaction[]
+  watchlists       Watchlist[]
+  balanceHistory   BalanceHistory[]
+  createdAt        DateTime         @default(now())
+}
+
+model BalanceHistory {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  balance   Float
+  date      DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Portfolio {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  assetId   Int
+  quantity  Float    @default(0)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  asset     Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, assetId])
+}
+
+model Asset {
+  id             Int            @id @default(autoincrement())
+  symbol         String         @unique
+  name           String
+  type           String
+  sector         String?
+  currentPrice   Float          @default(0)
+  change24h    Float          @default(0)
+  portfolio      Portfolio[]
+  transactions   Transaction[]
+  watchlists     Watchlist[]
+  priceHistory   PriceHistory[]
+  updatedAt      DateTime       @updatedAt
+}
+
+model PriceHistory {
+  id        String   @id @default(cuid())
+  price     Float
+  createdAt DateTime @default(now())
+  
+  assetId   Int      // <-- Modificat din String in Int
+  asset     Asset    @relation(fields: [assetId], references: [id])
+
+  // Aceasta linie ii spune bazei de date sa creeze un index super-rapid
+  // de cautare bazat pe moneda si ora
+  @@index([assetId, createdAt])
+}
+model Transaction {
+  id              Int      @id @default(autoincrement())
+  userId          Int
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assetId         Int
+  asset           Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  type            String
+  quantity        Float
+  priceAtPurchase Float
+  date            DateTime @default(now())
+}
+
+model Watchlist {
+  id      Int   @id @default(autoincrement())
+  userId  Int
+  user    User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assetId Int
+  asset   Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, assetId])
+}

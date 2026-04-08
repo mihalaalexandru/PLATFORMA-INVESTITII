@@ -1,0 +1,225 @@
+.landing-container {
+  min-height: 100vh;
+  background-color: #0b0e11;
+  color: #eaecef;
+  font-family: 'Inter', sans-serif;
+  overflow-x: hidden;
+}
+
+.landing-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 5%;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.landing-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 24px;
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.landing-logo-icon {
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  padding: 8px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.landing-nav-buttons {
+  display: flex;
+  gap: 16px;
+}
+
+.btn-login {
+  background: transparent;
+  border: none;
+  color: #eaecef;
+  font-weight: 600;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 10px 20px;
+  transition: color 0.2s;
+}
+
+.btn-login:hover {
+  color: #3b82f6;
+}
+
+.btn-register {
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 10px 24px;
+  transition: background-color 0.2s, transform 0.2s;
+}
+
+.btn-register:hover {
+  background-color: #2563eb;
+  transform: translateY(-2px);
+}
+
+.hero-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 100px 20px;
+  max-width: 1000px;
+  margin: 0 auto;
+  animation: fadeIn 1s ease-out;
+}
+
+.hero-badge {
+  background-color: rgba(59, 130, 246, 0.1);
+  color: #3b82f6;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 24px;
+  border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.hero-title {
+  font-size: 64px;
+  font-weight: 800;
+  line-height: 1.1;
+  margin: 0 0 24px 0;
+  background: linear-gradient(to right, #f8fafc, #94a3b8);
+  -webkit-background-clip: text;
+  background-clip: text;         
+  -webkit-text-fill-color: transparent;
+}
+
+.hero-title span {
+  color: #3b82f6;
+  -webkit-text-fill-color: #3b82f6;
+}
+
+.hero-subtitle {
+  font-size: 20px;
+  color: #94a3b8;
+  max-width: 600px;
+  line-height: 1.6;
+  margin: 0 0 40px 0;
+}
+
+.hero-cta {
+  display: flex;
+  gap: 20px;
+}
+
+.btn-primary-large {
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 16px 32px;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.4);
+}
+
+.btn-primary-large:hover {
+  background-color: #2563eb;
+  transform: translateY(-3px);
+  box-shadow: 0 20px 25px -5px rgba(59, 130, 246, 0.5);
+}
+
+.btn-secondary-large {
+  background-color: #181a20;
+  color: #eaecef;
+  border: 1px solid #2b3139;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 16px 32px;
+  transition: all 0.2s;
+}
+
+.btn-secondary-large:hover {
+  background-color: #2b3139;
+  transform: translateY(-3px);
+}
+
+.features-section {
+  padding: 80px 5%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 32px;
+}
+
+.feature-card {
+  background-color: #181a20;
+  border: 1px solid #2b3139;
+  border-radius: 20px;
+  padding: 40px 32px;
+  transition: transform 0.3s ease, border-color 0.3s ease;
+}
+
+.feature-card:hover {
+  transform: translateY(-10px);
+  border-color: #3b82f6;
+}
+
+.feature-icon-wrapper {
+  width: 60px;
+  height: 60px;
+  background-color: rgba(59, 130, 246, 0.1);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.feature-card h3 {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0 0 16px 0;
+  color: #f8fafc;
+}
+
+.feature-card p {
+  color: #848e9c;
+  line-height: 1.6;
+  margin: 0;
+  font-size: 15px;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 768px) {
+  .hero-title { font-size: 42px; }
+  .hero-cta { flex-direction: column; width: 100%; }
+  .btn-primary-large, .btn-secondary-large { width: 100%; justify-content: center; }
+  .landing-nav-buttons { display: none; }
+}
