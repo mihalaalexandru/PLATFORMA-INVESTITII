@@ -1,4 +1,4 @@
-import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -706,6 +706,12 @@ function DashboardPremium() {
     const totalPnL = totalPortfolioValue - totalInvested;
     const isPnLPositive = totalPnL >= 0;
     const roiPercentage = totalInvested > 0 ? ((totalPnL / totalInvested) * 100).toFixed(2) : '0.00';
+
+    // ADĂUGĂ ASTA AICI: Pregătim datele pentru noul grafic de PNL
+    const pnlData = portfolio.map(item => ({
+      name: item.asset.symbol,
+      pnl: parseFloat(item.profitLoss.toFixed(2))
+    })).sort((a, b) => b.pnl - a.pnl);
 
     return (
       <motion.div variants={containerVariants} initial="hidden" animate="show" className="w-full space-y-8">

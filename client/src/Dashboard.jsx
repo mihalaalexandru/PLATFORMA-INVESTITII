@@ -1,4 +1,4 @@
-import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { LineChart, Line, BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -66,6 +66,14 @@ const CURRENCY_SYMBOLS = {
   RON: 'RON'
 };
 
+const formatMarketCap = (value) => {
+  if (!value) return "N/A";
+  if (value >= 1e12) return `$${(value / 1e12).toFixed(2)}T`;
+  if (value >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
+  if (value >= 1e6) return `$${(value / 1e6).toFixed(2)}M`;
+  return `$${value.toLocaleString()}`;
+};
+
 const containerVariants = {
   hidden: { opacity: 0 },
   show: {
@@ -110,6 +118,13 @@ function Dashboard() {
   const [isChartModalOpen, setIsChartModalOpen] = useState(false);
   const [selectedChartAsset, setSelectedChartAsset] = useState(null);
   const [chartData, setChartData] = useState([]);
+
+  const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawMethod, setWithdrawMethod] = useState('bank'); 
+
+  const [savedCards, setSavedCards] = useState(() => JSON.parse(localStorage.getItem('investPro_cards')) || []);
+  const [saveCardOption, setSaveCardOption] = useState(false);
 
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
   const [depositData, setDepositData] = useState({
@@ -608,10 +623,39 @@ function Dashboard() {
   };
 
   const handleDepositSubmit = async () => {
+    // 1. Validare Sumă
     if (!depositData.amount || isNaN(depositData.amount) || parseFloat(depositData.amount) <= 0) {
       return toast.warning('Please enter a valid amount.');
     }
     
+    // 2. Validare Numar Card (Fix 16 cifre)
+    if (!depositData.cardNumber || depositData.cardNumber.length !== 16) {
+      return toast.warning('Card number must be exactly 16 digits.');
+    }
+
+    // 3. Validare Dată Expirare
+    if (!depositData.expiry || !/^(0[1-9]|1[0-2])\/\d{2}$/.test(depositData.expiry)) {
+      return toast.warning('Expiry date must be in MM/YY format (e.g., 12/25).');
+    }
+    
+    // Verificăm dacă nu e expirat deja cardul (lună/an)
+    const [month, year] = depositData.expiry.split('/');
+    const currentYear = new Date().getFullYear() % 100; // Ultimele 2 cifre din an (ex: 24)
+    const currentMonth = new Date().getMonth() + 1;
+    if (parseInt(year) < currentYear || (parseInt(year) === currentYear && parseInt(month) < currentMonth)) {
+      return toast.warning('This card has expired.');
+    }
+
+    // 4. Validare CVV (Fix 3 cifre)
+    if (!depositData.cvv || depositData.cvv.length !== 3) {
+      return toast.warning('CVV must be exactly 3 digits.');
+    }
+
+    // 5. Validare Nume
+    if (!depositData.cardName || depositData.cardName.trim().length < 3) {
+      return toast.warning('Please enter a valid cardholder name.');
+    }
+
     try {
       const amountInUSD = parseFloat(depositData.amount) / (CURRENCY_RATES[user?.currency || 'USD'] || 1);
 
@@ -623,11 +667,67 @@ function Dashboard() {
       setUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
       
+      // --- COD NOU PENTRU SALVARE CARD ---
+      if (saveCardOption) {
+        const newCard = {
+          id: Date.now().toString(),
+          last4: depositData.cardNumber.slice(-4),
+          expiry: depositData.expiry,
+          cardName: depositData.cardName
+        };
+        const updatedCards = [...savedCards, newCard];
+        setSavedCards(updatedCards);
+        localStorage.setItem('investPro_cards', JSON.stringify(updatedCards));
+      }
+      // --- END COD NOU ---
+
       toast.success('Funds deposited successfully!');
       setIsDepositModalOpen(false);
       setDepositData({ amount: '', cardNumber: '', cardName: '', expiry: '', cvv: '' });
+      setSaveCardOption(false); // Resetăm căsuța
     } catch (err) {
       toast.error(err.response?.data?.message || 'Deposit failed');
+    }
+  };
+
+  const handleWithdrawSubmit = async () => {
+    if (!withdrawAmount || isNaN(withdrawAmount) || parseFloat(withdrawAmount) <= 0) {
+      return toast.warning('Please enter a valid amount.');
+    }
+    if (parseFloat(withdrawAmount) > user.balance) {
+      return toast.warning('Insufficient funds.');
+    }
+
+    try {
+      const amountInUSD = parseFloat(withdrawAmount) / (CURRENCY_RATES[user?.currency || 'USD'] || 1);
+      
+      const backendMethod = withdrawMethod.includes('card') ? 'card' : 'bank';
+
+      const res = await axios.post('http://localhost:3000/api/trade/withdraw', {
+        userId: user.id,
+        amount: amountInUSD,
+        method: backendMethod
+      });
+
+      const updatedUser = { ...user, balance: res.data.newBalance };
+      setUser(updatedUser);
+      localStorage.setItem('user', JSON.stringify(updatedUser));
+      
+      toast.success(
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          <strong style={{ fontSize: '15px' }}>Withdrawal Successful</strong>
+          <span>Requested: {formatCurrency(amountInUSD)}</span>
+          <span style={{ color: '#ef4444' }}>Network Fee: -{formatCurrency(res.data.fee)}</span>
+          <span style={{ color: '#10b981', fontWeight: 'bold' }}>You receive: {formatCurrency(res.data.received)}</span>
+        </div>, 
+        { duration: 6000 }
+      );
+
+      setIsWithdrawModalOpen(false);
+      setWithdrawAmount('');
+      setWithdrawMethod('bank');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Withdrawal failed');
     }
   };
 
@@ -725,14 +825,25 @@ function Dashboard() {
 
       const promptText = `You are InvestPro AI, a smart financial assistant integrated into a trading platform. Answer concisely, friendly, professionally and strictly in English to the following user question: ${userMsg.text}`;
 
-      const response = await axios.post(
+      const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
         {
-          contents: [{ parts: [{ text: promptText }] }]
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: promptText }] }]
+          })
         }
       );
 
-      const botText = response.data.candidates[0].content.parts[0].text;
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const botText = data.candidates[0].content.parts[0].text;
 
       setChatMessages(prev => {
         const newMsgs = [...prev];
@@ -742,6 +853,7 @@ function Dashboard() {
       });
 
     } catch (error) {
+      console.error(error);
       setChatMessages(prev => {
         const newMsgs = [...prev];
         newMsgs.pop();
@@ -879,6 +991,11 @@ function Dashboard() {
     const totalPnL = totalPortfolioValue - totalInvested;
     const isPnLPositive = totalPnL >= 0;
     const roiPercentage = totalInvested > 0 ? ((totalPnL / totalInvested) * 100).toFixed(2) : '0.00';
+
+    const pnlData = portfolio.map(item => ({
+      name: item.asset.symbol,
+      pnl: parseFloat((item.profitLoss || 0).toFixed(2))
+    })).sort((a, b) => b.pnl - a.pnl);
 
     switch (activeView) {
       case 'dashboard':
@@ -1415,7 +1532,7 @@ function Dashboard() {
             <motion.div variants={itemVariants} style={{ backgroundColor: 'var(--bg-card)', padding: '24px', borderRadius: '20px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', marginTop: '10px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h3 style={{ margin: 0, fontSize: '18px', color: 'var(--text-main)' }}>Pending Auto Orders</h3>
-                <div style={{ padding: '6px', borderRadius: '8px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#3b82f6' }}>
+                <div style={{ padding: '6px', borderRadius: '8px', backgroundColor: 'rgba(0, 0, 0, 0.1)', color: '#3b82f6' }}>
                   <Clock size={18} />
                 </div>
               </div>
@@ -1449,22 +1566,40 @@ function Dashboard() {
             </motion.div>
 
             <motion.div variants={itemVariants} style={{ backgroundColor: 'var(--bg-card)', padding: '24px', borderRadius: '20px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column' }}>
-              <h3 style={{ fontSize: '20px', margin: '0 0 24px 0', color: 'var(--text-main)' }}>Performance vs Market</h3>
+              <h3 style={{ fontSize: '20px', margin: '0 0 24px 0', color: 'var(--text-main)' }}>Profit/Loss</h3>
               <div style={{ width: '100%', height: '320px', position: 'relative' }}>
-                <ResponsiveContainer width="99%" height="100%" minWidth={1} minHeight={1}>
-                  <LineChart data={balanceHistory}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={true} horizontal={true} stroke="var(--border-color)" opacity={0.4} />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: 'var(--text-muted)', fontSize: 12 }} dy={10} minTickGap={30} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fill: 'var(--text-muted)', fontSize: 12 }} dx={-10} tickFormatter={(value) => formatCurrency(value, 0)} />
-                    <Tooltip 
-                      contentStyle={{ borderRadius: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-main)', color: 'var(--text-main)' }}
-                      formatter={(value, name) => [formatCurrency(value), name === 'value' ? 'Your Portfolio' : 'Market Benchmark']}
-                    />
-                    <Line type="monotone" dataKey={(d) => d.value * 0.95} stroke="#64748b" strokeWidth={2} dot={false} isAnimationActive={true} animationDuration={1500} />
-                    <Line type="monotone" dataKey="value" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4, fill: '#3b82f6', stroke: 'var(--bg-card)', strokeWidth: 2 }} activeDot={{ r: 6 }} isAnimationActive={true} animationDuration={1500} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+  {portfolio.length > 0 ? (
+    <ResponsiveContainer width="99%" height="100%" minWidth={1} minHeight={1}>
+      <BarChart data={pnlData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" opacity={0.4} />
+        <XAxis dataKey="name" stroke="var(--text-muted)" tickLine={false} axisLine={false} tick={{ fontSize: 12 }} dy={10} />
+        <YAxis stroke="var(--text-muted)" tickLine={false} axisLine={false} tickFormatter={(val) => `$${val}`} tick={{ fontSize: 12,fill: '#ffffff' }} dx={-10} />
+        <Tooltip 
+          cursor={{ fill: 'rgba(255, 255, 255, 0.05)' }}
+          contentStyle={{ 
+            backgroundColor: 'var(--bg-main)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '8px',
+            color: 'var(--text-main)'
+          }}
+          formatter={(value) => [formatCurrency(value), 'Profit/Loss']}
+        />
+        <Bar dataKey="pnl" radius={[4, 4, 4, 4]}>
+          {pnlData.map((entry, index) => (
+            <Cell 
+              key={`cell-${index}`} 
+              fill={entry.pnl >= 0 ? '#10b981' : '#ef4444'} 
+            />
+          ))}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  ) : (
+    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', border: '1px dashed var(--border-color)', borderRadius: '12px' }}>
+      Buy assets to see your Profit/Loss chart
+    </div>
+  )}
+</div>
               
               <div style={{ display: 'flex', justifyContent: 'center', gap: '32px', marginTop: '20px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', color: 'var(--text-main)', fontWeight: '500' }}>
@@ -1722,206 +1857,233 @@ function Dashboard() {
 
       case 'settings':
         return (
-          <motion.div variants={containerVariants} initial="hidden" animate="show" className="settings-section">
-            <motion.header variants={itemVariants} className="header">
-              <h1 style={{ color: 'var(--text-main)' }}>Settings</h1>
-              <p style={{ color: 'var(--text-muted)' }}>Manage your account security and preferences.</p>
+          <motion.div variants={containerVariants} initial="hidden" animate="show" className="settings-section" style={{ padding: '24px' }}>
+            <motion.header variants={itemVariants} className="header" style={{ marginBottom: '32px' }}>
+              <h1 style={{ color: 'var(--text-main)', fontSize: '28px', fontWeight: '800' }}>Settings</h1>
+              <p style={{ color: 'var(--text-muted)' }}>Manage your account security, preferences, and funds.</p>
             </motion.header>
 
-            <motion.div variants={itemVariants} className="dashboard-grid" style={{ gridTemplateColumns: '1fr', gap: '24px' }}>
+            <motion.div variants={itemVariants} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '32px', alignItems: 'start' }}>
               
-              <motion.div variants={itemVariants} className="stat-card" style={{ maxWidth: '600px' }}>
-                <h3 style={{ color: 'var(--text-main)', fontSize: '18px', marginBottom: '24px' }}>Profile Preferences</h3>
-                <form className="auth-form" style={{ padding: 0, backgroundColor: 'transparent', boxShadow: 'none' }} onSubmit={async (e) => {
-                  e.preventDefault();
-                  try {
-                    const response = await axios.put('http://localhost:3000/api/auth/update-profile', {
-                      userId: user.id,
-                      name: user.name,
-                      currency: user.currency || 'USD',
-                      profilePicture: user.profilePicture
-                    });
-                    localStorage.setItem('user', JSON.stringify(response.data.user));
-                    setUser(response.data.user);
-                    toast.success('Profile preferences updated!');
-                  } catch (err) {
-                    toast.error('Failed to update profile');
-                  }
-                }}>
-                  
-                  <div className="profile-avatar-section">
-                    <div className="profile-avatar-display">
-                      {user.profilePicture ? (
-                        <img src={user.profilePicture} alt="Profile" />
-                      ) : (
-                        <div className="avatar-placeholder">
-                          {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
-                        </div>
-                      )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <motion.div variants={itemVariants} className="stat-card" style={{ maxWidth: '100%', border: '1px solid var(--border-color)' }}>
+                  <h3 style={{ color: 'var(--text-main)', fontSize: '18px', marginBottom: '24px' }}>Profile Preferences</h3>
+                  <form className="auth-form" style={{ padding: 0, backgroundColor: 'transparent', boxShadow: 'none' }} onSubmit={async (e) => {
+                    e.preventDefault();
+                    try {
+                      const response = await axios.put('http://localhost:3000/api/auth/update-profile', {
+                        userId: user.id,
+                        name: user.name,
+                        currency: user.currency || 'USD',
+                        profilePicture: user.profilePicture
+                      });
+                      localStorage.setItem('user', JSON.stringify(response.data.user));
+                      setUser(response.data.user);
+                      toast.success('Profile preferences updated!');
+                    } catch (err) {
+                      toast.error('Failed to update profile');
+                    }
+                  }}>
+                    <div className="profile-avatar-section">
+                      <div className="profile-avatar-display">
+                        {user.profilePicture ? (
+                          <img src={user.profilePicture} alt="Profile" />
+                        ) : (
+                          <div className="avatar-placeholder">
+                            {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                          </div>
+                        )}
+                      </div>
+                      <div className="profile-avatar-actions">
+                        <label className="settings-label" style={{ color: 'var(--text-muted)' }}>Profile Picture</label>
+                        <input 
+                          type="file" 
+                          accept="image/*"
+                          ref={fileInputRef}
+                          style={{ display: 'none' }} 
+                          onChange={(e) => {
+                            const file = e.target.files[0];
+                            if (file) {
+                              if (file.size > 5000000) return toast.error('File is too large. Maximum size is 5MB.');
+                              const reader = new FileReader();
+                              reader.onloadend = () => setUser({...user, profilePicture: reader.result});
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                        <button 
+                          type="button" 
+                          className="custom-file-btn"
+                          onClick={() => fileInputRef.current.click()}
+                        >
+                          Choose Image
+                        </button>
+                        <p className="helper-text">JPG, PNG or GIF. Max 5MB.</p>
+                      </div>
                     </div>
+                    <div className="form-group">
+                      <label className="settings-label" style={{ color: 'var(--text-muted)' }}>Full Name</label>
+                      <input type="text" value={user.name || ''} onChange={(e) => setUser({...user, name: e.target.value})} className="settings-input" style={{ backgroundColor: 'var(--bg-main)', color: 'var(--text-main)', borderColor: 'var(--border-color)' }} />
+                    </div>
+                    <button type="submit" className="submit-btn" style={{ marginTop: '16px' }}>
+                      Save Preferences
+                    </button>
+                  </form>
+                </motion.div>
+
+                <motion.div variants={itemVariants} className="stat-card" style={{ maxWidth: '100%', border: '1px solid var(--border-color)' }}>
+                  <h3 style={{ color: 'var(--text-main)', fontSize: '18px', marginBottom: '20px' }}>Change Password</h3>
+                  <form className="auth-form" style={{ padding: 0, backgroundColor: 'transparent', boxShadow: 'none' }} onSubmit={async (e) => {
+                    e.preventDefault();
+                    const currentPassword = e.target.currentPassword.value;
+                    const newPassword = e.target.newPassword.value;
+                    const confirmPassword = e.target.confirmPassword.value;
                     
-                    <div className="profile-avatar-actions">
-                      <label className="settings-label" style={{ color: 'var(--text-muted)' }}>Profile Picture</label>
-                      <input 
-                        type="file" 
-                        accept="image/*"
-                        ref={fileInputRef}
-                        style={{ display: 'none' }} 
-                        onChange={(e) => {
-                          const file = e.target.files[0];
-                          if (file) {
-                            if (file.size > 5000000) return toast.error('File is too large. Maximum size is 5MB.');
-                            const reader = new FileReader();
-                            reader.onloadend = () => setUser({...user, profilePicture: reader.result});
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                      />
-                      <button 
-                        type="button" 
-                        className="custom-file-btn"
-                        onClick={() => fileInputRef.current.click()}
-                      >
-                        Choose Image
-                      </button>
-                      <p className="helper-text">JPG, PNG or GIF. Max 5MB.</p>
+                    if (newPassword !== confirmPassword) return toast.error('New passwords do not match');
+                    if (newPassword.length < 6) return toast.error('Password must be at least 6 characters');
+
+                    try {
+                      await axios.put('http://localhost:3000/api/auth/change-password', {
+                        userId: user.id,
+                        currentPassword,
+                        newPassword
+                      });
+                      toast.success('Password updated successfully!');
+                      e.target.reset();
+                    } catch (err) {
+                      toast.error(err.response?.data?.message || 'Error updating password');
+                    }
+                  }}>
+                    <div className="form-group">
+                      <label style={{ color: 'var(--text-muted)' }}>Current Password</label>
+                      <input type="password" name="currentPassword" required style={{ backgroundColor: 'var(--bg-main)', color: 'var(--text-main)', borderColor: 'var(--border-color)' }} />
                     </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="settings-label" style={{ color: 'var(--text-muted)' }}>Full Name</label>
-                    <input type="text" value={user.name || ''} onChange={(e) => setUser({...user, name: e.target.value})} className="settings-input" style={{ backgroundColor: 'var(--bg-main)', color: 'var(--text-main)', borderColor: 'var(--border-color)' }} />
-                  </div>
-                  
-                  <button type="submit" className="submit-btn" style={{ marginTop: '16px' }}>
-                    Save Preferences
-                  </button>
-                </form>
-              </motion.div>
-
-              <motion.div variants={itemVariants} className="stat-card" style={{ maxWidth: '600px' }}>
-                <h3 style={{ color: 'var(--text-main)', fontSize: '18px', marginBottom: '20px' }}>Change Password</h3>
-                <form className="auth-form" style={{ padding: 0, backgroundColor: 'transparent', boxShadow: 'none' }} onSubmit={async (e) => {
-                  e.preventDefault();
-                  const currentPassword = e.target.currentPassword.value;
-                  const newPassword = e.target.newPassword.value;
-                  const confirmPassword = e.target.confirmPassword.value;
-                  
-                  if (newPassword !== confirmPassword) return toast.error('New passwords do not match');
-                  if (newPassword.length < 6) return toast.error('Password must be at least 6 characters');
-
-                  try {
-                    await axios.put('http://localhost:3000/api/auth/change-password', {
-                      userId: user.id,
-                      currentPassword,
-                      newPassword
-                    });
-                    toast.success('Password updated successfully!');
-                    e.target.reset();
-                  } catch (err) {
-                    toast.error(err.response?.data?.message || 'Error updating password');
-                  }
-                }}>
-                  <div className="form-group">
-                    <label style={{ color: 'var(--text-muted)' }}>Current Password</label>
-                    <input type="password" name="currentPassword" required style={{ backgroundColor: 'var(--bg-main)', color: 'var(--text-main)', borderColor: 'var(--border-color)' }} />
-                  </div>
-                  <div className="form-group">
-                    <label style={{ color: 'var(--text-muted)' }}>New Password</label>
-                    <input type="password" name="newPassword" required style={{ backgroundColor: 'var(--bg-main)', color: 'var(--text-main)', borderColor: 'var(--border-color)' }} />
-                  </div>
-                  <div className="form-group">
-                    <label style={{ color: 'var(--text-muted)' }}>Confirm New Password</label>
-                    <input type="password" name="confirmPassword" required style={{ backgroundColor: 'var(--bg-main)', color: 'var(--text-main)', borderColor: 'var(--border-color)' }} />
-                  </div>
-                  <button type="submit" className="submit-btn" style={{ marginTop: '10px' }}>Update Password</button>
-                </form>
-              </motion.div>
-
-              <motion.div variants={itemVariants} className="stat-card" style={{ maxWidth: '600px', border: '1px solid var(--border-color)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                  <div>
-                    <h3 style={{ color: 'var(--text-main)', fontSize: '18px', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <Sparkles size={20} style={{ color: '#fbbf24' }} />
-                      Dark Mode
-                    </h3>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '14px', margin: '4px 0 0 0' }}>Enable dark premium theme with enhanced UI design.</p>
-                  </div>
-                  <div 
-                    onClick={toggleTheme}
-                    style={{ 
-                      width: '60px', 
-                      height: '32px', 
-                      borderRadius: '16px', 
-                      background: isPremium ? '#2ebd85' : '#64748b',
-                      cursor: 'pointer',
-                      position: 'relative',
-                      padding: '2px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      transition: 'background 0.3s'
-                    }}
-                  >
+                    <div className="form-group">
+                      <label style={{ color: 'var(--text-muted)' }}>New Password</label>
+                      <input type="password" name="newPassword" required style={{ backgroundColor: 'var(--bg-main)', color: 'var(--text-main)', borderColor: 'var(--border-color)' }} />
+                    </div>
+                    <div className="form-group">
+                      <label style={{ color: 'var(--text-muted)' }}>Confirm New Password</label>
+                      <input type="password" name="confirmPassword" required style={{ backgroundColor: 'var(--bg-main)', color: 'var(--text-main)', borderColor: 'var(--border-color)' }} />
+                    </div>
+                    <button type="submit" className="submit-btn" style={{ marginTop: '10px' }}>Update Password</button>
+                  </form>
+                </motion.div>
+                
+                <motion.div variants={itemVariants} className="stat-card" style={{ maxWidth: '100%', border: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <h3 style={{ color: 'var(--text-main)', fontSize: '18px', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <Sparkles size={20} style={{ color: '#fbbf24' }} />
+                        Dark Mode
+                      </h3>
+                      <p style={{ color: 'var(--text-muted)', fontSize: '14px', margin: '4px 0 0 0' }}>Enable dark premium theme with enhanced UI design.</p>
+                    </div>
                     <div 
-                      style={{
-                        width: '28px',
-                        height: '28px',
-                        borderRadius: '50%',
-                        background: 'white',
-                        position: 'absolute',
-                        left: isPremium ? '30px' : '2px',
-                        transition: 'left 0.3s',
+                      onClick={toggleTheme}
+                      style={{ 
+                        width: '60px', 
+                        height: '32px', 
+                        borderRadius: '16px', 
+                        background: isPremium ? '#2ebd85' : '#64748b',
+                        cursor: 'pointer',
+                        position: 'relative',
+                        padding: '2px',
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'center',
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+                        transition: 'background 0.3s'
                       }}
                     >
-                      {isPremium ? <Sparkles size={16} style={{ color: '#2ebd85' }} /> : <Sun size={16} style={{ color: '#64748b' }} />}
+                      <div 
+                        style={{
+                          width: '28px',
+                          height: '28px',
+                          borderRadius: '50%',
+                          background: 'white',
+                          position: 'absolute',
+                          left: isPremium ? '30px' : '2px',
+                          transition: 'left 0.3s',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
+                        }}
+                      >
+                        {isPremium ? <Sparkles size={16} style={{ color: '#2ebd85' }} /> : <Sun size={16} style={{ color: '#64748b' }} />}
+                      </div>
                     </div>
                   </div>
-                </div>
-                {isPremium && (
-                  <p style={{ color: 'var(--text-muted)', fontSize: '13px', margin: 0, fontStyle: 'italic' }}>
-                    ✨ Dark mode is now active! Enjoy the enhanced interface.
+                </motion.div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                <motion.div variants={itemVariants} className="stat-card" style={{ maxWidth: '100%', border: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+                    <div>
+                      <h3 style={{ color: 'var(--text-main)', fontSize: '18px', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <Wallet size={20} style={{ color: '#3b82f6' }} />
+                        Wallet Management
+                      </h3>
+                      <p style={{ color: 'var(--text-muted)', fontSize: '14px', margin: '4px 0 0 0' }}>Manage your fiat balance.</p>
+                    </div>
+                    <div style={{ color: 'var(--text-main)', fontSize: '24px', fontWeight: 'bold' }}>
+                      {formatCurrency(user?.balance || 0)}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '12px' }}>
+                    <button 
+                      onClick={() => setIsDepositModalOpen(true)}
+                      className="submit-btn"
+                      style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
+                    >
+                      <ArrowDownRight size={18} /> Add Funds
+                    </button>
+                    <button 
+                      onClick={() => setIsWithdrawModalOpen(true)}
+                      className="submit-btn"
+                      style={{ flex: 1, background: 'transparent', color: 'var(--text-main)', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
+                    >
+                      <ArrowUpRight size={18} /> Withdraw
+                    </button>
+                  </div>
+                </motion.div>
+
+                <motion.div variants={itemVariants} className="stat-card" style={{ maxWidth: '100%', border: '1px solid var(--border-color)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                    <div>
+                      <h3 style={{ color: 'var(--text-main)', fontSize: '18px', margin: 0 }}>Two-Factor Authentication</h3>
+                      <p style={{ color: 'var(--text-muted)', fontSize: '14px', margin: '4px 0 0 0' }}>Add an extra layer of security to your account.</p>
+                    </div>
+                    <div style={{ padding: '6px 12px', borderRadius: '8px', backgroundColor: user?.isTwoFactorEnabled ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', color: user?.isTwoFactorEnabled ? '#10b981' : '#ef4444', fontWeight: 'bold', fontSize: '12px' }}>
+                      {user?.isTwoFactorEnabled ? 'ENABLED' : 'DISABLED'}
+                    </div>
+                  </div>
+                  {user?.isTwoFactorEnabled ? (
+                    <button onClick={handleDisable2FA} className="submit-btn" style={{ background: 'transparent', color: '#ef4444', border: '1px solid #ef4444', width: '100%' }}>
+                      Disable 2FA
+                    </button>
+                  ) : (
+                    <button onClick={handleGenerate2FA} className="submit-btn" style={{ width: '100%' }}>
+                      Setup 2FA
+                    </button>
+                  )}
+                </motion.div>
+
+                <motion.div variants={itemVariants} className="stat-card" style={{ maxWidth: '100%', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
+                  <h3 style={{ color: '#ef4444', fontSize: '18px', marginBottom: '10px' }}>Danger Zone</h3>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '20px' }}>
+                    Once you delete your account, there is no going back. Please be certain.
                   </p>
-                )}
-              </motion.div>
-
-              <motion.div variants={itemVariants} className="stat-card" style={{ maxWidth: '600px', border: '1px solid var(--border-color)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                  <div>
-                    <h3 style={{ color: 'var(--text-main)', fontSize: '18px', margin: 0 }}>Two-Factor Authentication</h3>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '14px', margin: '4px 0 0 0' }}>Add an extra layer of security to your account.</p>
-                  </div>
-                  <div style={{ padding: '6px 12px', borderRadius: '8px', backgroundColor: user?.isTwoFactorEnabled ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', color: user?.isTwoFactorEnabled ? '#10b981' : '#ef4444', fontWeight: 'bold', fontSize: '12px' }}>
-                    {user?.isTwoFactorEnabled ? 'ENABLED' : 'DISABLED'}
-                  </div>
-                </div>
-                {user?.isTwoFactorEnabled ? (
-                  <button onClick={handleDisable2FA} style={{ background: 'transparent', color: '#ef4444', border: '1px solid #ef4444', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', width: '100%' }}>
-                    Disable 2FA
+                  <button 
+                    onClick={() => setIsDeleteModalOpen(true)}
+                    className="submit-btn"
+                    style={{ background: '#ef4444', width: '100%' }}
+                  >
+                    Delete Account
                   </button>
-                ) : (
-                  <button onClick={handleGenerate2FA} style={{ background: '#3b82f6', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', width: '100%' }}>
-                    Setup 2FA
-                  </button>
-                )}
-              </motion.div>
+                </motion.div>
 
-              <motion.div variants={itemVariants} className="stat-card" style={{ maxWidth: '600px', border: '1px solid rgba(239, 68, 68, 0.3)' }}>
-                <h3 style={{ color: '#ef4444', fontSize: '18px', marginBottom: '10px' }}>Danger Zone</h3>
-                <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '20px' }}>
-                  Once you delete your account, there is no going back. Please be certain.
-                </p>
-                <button 
-                  onClick={() => setIsDeleteModalOpen(true)}
-                  style={{ background: '#ef4444', color: 'white', border: 'none', padding: '10px 20px', borderRadius: '8px', cursor: 'pointer', fontWeight: '600' }}
-                >
-                  Delete Account
-                </button>
-              </motion.div>
-
+              </div>
             </motion.div>
           </motion.div>
         );
@@ -2073,6 +2235,7 @@ function Dashboard() {
         </div>
       )}
 
+      {/* Deposit Modal */}
       {isDepositModalOpen && (
         <div className="modal-overlay">
           <div className="modal-card" style={{ maxWidth: '450px' }}>
@@ -2099,7 +2262,9 @@ function Dashboard() {
               <label style={{ color: 'var(--text-muted)' }}>Amount ({user?.currency || 'USD'})</label>
               <input 
                 type="number" 
+                min="1"
                 value={depositData.amount}
+                onKeyDown={(e) => ["e", "E", "+", "-"].includes(e.key) && e.preventDefault()}
                 onChange={(e) => setDepositData({...depositData, amount: e.target.value})}
                 placeholder="0.00"
                 style={{ backgroundColor: 'var(--bg-main)', color: 'var(--text-main)', borderColor: 'var(--border-color)' }}
@@ -2114,20 +2279,32 @@ function Dashboard() {
                 value={depositData.cardNumber}
                 onChange={(e) => setDepositData({...depositData, cardNumber: e.target.value.replace(/\D/g, '')})}
                 placeholder="1234567890123456"
-                style={{ backgroundColor: 'var(--bg-main)', color: 'var(--text-main)', borderColor: 'var(--border-color)' }}
+                style={{ backgroundColor: 'var(--bg-main)', color: 'var(--text-main)', borderColor: 'var(--border-color)', letterSpacing: '2px' }}
               />
             </div>
 
             <div className="deposit-grid">
               <div className="form-group">
-                <label style={{ color: 'var(--text-muted)' }}>Expiry Date</label>
+                <label style={{ color: 'var(--text-muted)' }}>Expiry Date (MM/YY)</label>
                 <input 
                   type="text" 
                   maxLength="5"
                   value={depositData.expiry}
                   onChange={(e) => {
-                    let val = e.target.value.replace(/\D/g, '');
-                    if (val.length >= 2) val = val.substring(0, 2) + '/' + val.substring(2, 4);
+                    let val = e.target.value.replace(/\D/g, ''); // Păstrăm doar cifrele
+                    
+                    // Restricționăm luna să nu fie peste 12
+                    if (val.length >= 2) {
+                      let month = parseInt(val.substring(0, 2));
+                      if (month > 12) val = '12' + val.substring(2);
+                      if (month === 0 && val.length === 2) val = '01' + val.substring(2);
+                    }
+                    
+                    // Punem bara (/) automat
+                    if (val.length >= 3) {
+                      val = val.substring(0, 2) + '/' + val.substring(2, 4);
+                    }
+                    
                     setDepositData({...depositData, expiry: val});
                   }}
                   placeholder="MM/YY"
@@ -2152,10 +2329,23 @@ function Dashboard() {
               <input 
                 type="text" 
                 value={depositData.cardName}
-                onChange={(e) => setDepositData({...depositData, cardName: e.target.value.toUpperCase()})}
+                onChange={(e) => setDepositData({...depositData, cardName: e.target.value.replace(/[^a-zA-Z\s]/g, '').toUpperCase()})}
                 placeholder="JOHN DOE"
                 style={{ backgroundColor: 'var(--bg-main)', color: 'var(--text-main)', borderColor: 'var(--border-color)' }}
               />
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '16px' }}>
+              <input 
+                type="checkbox" 
+                id="saveCard" 
+                checked={saveCardOption} 
+                onChange={(e) => setSaveCardOption(e.target.checked)} 
+                style={{ width: '16px', height: '16px', cursor: 'pointer', accentColor: '#3b82f6' }} 
+              />
+              <label htmlFor="saveCard" style={{ color: 'var(--text-muted)', fontSize: '14px', cursor: 'pointer' }}>
+                Save this card for future withdrawals
+              </label>
             </div>
 
             <div className="modal-buttons" style={{ marginTop: '24px' }}>
@@ -2165,8 +2355,56 @@ function Dashboard() {
           </div>
         </div>
       )}
+
+      {isWithdrawModalOpen && (
+        <div className="modal-overlay">
+          <div className="modal-card" style={{ maxWidth: '450px' }}>
+            <h2>Withdraw Funds</h2>
+            <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '20px' }}>
+              Available to withdraw: <strong style={{ color: 'var(--text-main)' }}>{formatCurrency(user?.balance || 0)}</strong>
+            </p>
+            
+            <div className="form-group">
+              <label style={{ color: 'var(--text-muted)' }}>Amount ({user?.currency || 'USD'})</label>
+              <input 
+                type="number" 
+                min="1"
+                max={user?.balance}
+                value={withdrawAmount}
+                onKeyDown={(e) => ["e", "E", "+", "-"].includes(e.key) && e.preventDefault()}
+                onChange={(e) => setWithdrawAmount(e.target.value)}
+                placeholder="0.00"
+                style={{ backgroundColor: 'var(--bg-main)', color: 'var(--text-main)', borderColor: 'var(--border-color)' }}
+              />
+            </div>
+
+            <div className="form-group" style={{ marginTop: '16px' }}>
+              <label style={{ color: 'var(--text-muted)' }}>Withdrawal Method</label>
+              <select 
+                value={withdrawMethod}
+                onChange={(e) => setWithdrawMethod(e.target.value)}
+                style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-main)', color: 'var(--text-main)', outline: 'none', cursor: 'pointer' }}
+              >
+                <option value="bank">Bank Transfer ($3.00 Fixed Fee)</option>
+                
+                {/* --- AICI AFIȘĂM DINAMIC CARDURILE --- */}
+                {savedCards.map(card => (
+                  <option key={card.id} value={`card_${card.id}`}>
+                    Card {card.cardName} (•••• {card.last4}) - 1.5% Fee
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="modal-buttons" style={{ marginTop: '24px' }}>
+              <button className="cancel-btn" onClick={() => setIsWithdrawModalOpen(false)}>Cancel</button>
+              <button className="confirm-btn" onClick={handleWithdrawSubmit}>Confirm Withdrawal</button>
+            </div>
+          </div>
+        </div>
+      )}
       
-      {isChartModalOpen && selectedChartAsset && (
+    {isChartModalOpen && selectedChartAsset && (
   <div className="fixed inset-0 z-[9999] flex flex-col bg-[#0B0E11] text-slate-200 font-sans dark overflow-hidden">
     <header className="flex h-[60px] items-center justify-between border-b border-slate-800 bg-[#11141C] px-4 shrink-0">
       <div className="flex items-center gap-6">
@@ -2271,6 +2509,52 @@ function Dashboard() {
             </CardContent>
           </Card>
         </div>
+
+        {/* --- START MARKET STATS --- */}
+        <div className="p-4 border-b border-slate-800 bg-[#11141C]">
+          <h3 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">
+            Market Stats
+          </h3>
+          <div className="grid grid-cols-2 gap-y-3 gap-x-4">
+            
+            <div className="flex flex-col col-span-2 pb-2 border-b border-slate-800">
+              <span className="text-xs text-slate-400">Market Cap</span>
+              <span className="text-sm font-medium text-white">
+                {selectedChartAsset?.marketCap ? formatMarketCap(selectedChartAsset.marketCap) : 'N/A'}
+              </span>
+            </div>
+
+            <div className="flex flex-col">
+              <span className="text-xs text-slate-400">P/E Ratio</span>
+              <span className="text-sm font-medium text-white">
+                {selectedChartAsset?.peRatio ? selectedChartAsset.peRatio.toFixed(2) : 'N/A'}
+              </span>
+            </div>
+
+            <div className="flex flex-col">
+              <span className="text-xs text-slate-400">Div Yield</span>
+              <span className="text-sm font-medium text-white">
+                {selectedChartAsset?.dividendYield ? `${selectedChartAsset.dividendYield.toFixed(2)}%` : 'N/A'}
+              </span>
+            </div>
+
+            <div className="flex flex-col mt-1">
+              <span className="text-xs text-slate-400">52W High</span>
+              <span className="text-sm font-medium text-[#0ECB81]">
+                {selectedChartAsset?.high52w ? `$${selectedChartAsset.high52w.toFixed(2)}` : 'N/A'}
+              </span>
+            </div>
+
+            <div className="flex flex-col mt-1">
+              <span className="text-xs text-slate-400">52W Low</span>
+              <span className="text-sm font-medium text-[#F6465D]">
+                {selectedChartAsset?.low52w ? `$${selectedChartAsset.low52w.toFixed(2)}` : 'N/A'}
+              </span>
+            </div>
+            
+          </div>
+        </div>
+        {/* --- END MARKET STATS --- */}
 
         <div className="p-4 flex flex-col flex-1">
           <Tabs 

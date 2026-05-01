@@ -134,4 +134,59 @@ const getTransactions = async (req, res) => {
   }
 };
 
-module.exports = { depositFunds, buyAsset, sellAsset, getTransactions };
+const withdrawFunds = async (req, res) => {
+  try {
+    const { userId, amount, method } = req.body;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ message: 'Suma trebuie să fie mai mare ca 0.' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: parseInt(userId) } });
+
+    if (!user) {
+      return res.status(404).json({ message: 'Utilizator inexistent.' });
+    }
+
+    if (user.balance < amount) {
+      return res.status(400).json({ message: 'Fonduri insuficiente pentru această retragere.' });
+    }
+
+    // Calculăm taxele conform realității
+    let fee = 0;
+    if (method === 'bank') {
+      fee = 3.00; // Taxă fixă de 3$ pentru transfer bancar
+    } else if (method === 'card') {
+      fee = amount * 0.015; // 1.5% taxă pentru retragere instantă pe card
+    }
+
+    // Verificăm dacă suma acoperă măcar comisionul
+    if (amount <= fee) {
+      return res.status(400).json({ message: `Suma este prea mică. Taxa pentru această retragere este $${fee.toFixed(2)}.` });
+    }
+
+    // Scădem suma totală cerută din contul utilizatorului
+    const newBalance = user.balance - amount;
+    
+    // Suma care îi ajunge efectiv în contul bancar (suma - taxa)
+    const receivedAmount = amount - fee;
+
+    await prisma.user.update({
+      where: { id: parseInt(userId) },
+      data: { balance: newBalance }
+    });
+
+    res.json({ 
+      message: 'Retragere procesată cu succes.',
+      newBalance: newBalance,
+      fee: fee,
+      received: receivedAmount
+    });
+
+  } catch (error) {
+    console.error("Eroare la retragere:", error);
+    res.status(500).json({ message: 'Eroare la procesarea retragerii.' });
+  }
+};
+
+module.exports = { depositFunds, buyAsset, sellAsset, getTransactions, withdrawFunds };

@@ -72,18 +72,24 @@ model Portfolio {
 }
 
 model Asset {
-  id             Int            @id @default(autoincrement())
-  symbol         String         @unique
-  name           String
-  type           String
-  sector         String?
-  currentPrice   Float          @default(0)
-  change24h    Float          @default(0)
-  portfolio      Portfolio[]
-  transactions   Transaction[]
-  watchlists     Watchlist[]
-  priceHistory   PriceHistory[]
-  updatedAt      DateTime       @updatedAt
+  id            Int             @id @default(autoincrement())
+  symbol        String          @unique
+  name          String
+  type          String
+  sector        String?
+  currentPrice  Float
+  change24h     Float           @default(0)
+  updatedAt     DateTime        @updatedAt
+  marketCap     Float?
+  peRatio       Float?
+  dividendYield Float?
+  high52w       Float?
+  low52w        Float?
+
+  portfolio     Portfolio[]
+  transactions  Transaction[]
+  watchlists    Watchlist[]
+  priceHistory  PriceHistory[]
 }
 
 model PriceHistory {
