@@ -36,7 +36,10 @@ import {
   Sun,
   User,
   Lock,
-  Shield
+  Shield,
+  ArrowUpFromLine,
+  DollarSign,
+  Zap as ZapIcon
 } from 'lucide-react';
 import './Dashboard.css';
 import TradingViewChart from './TradingViewChart';
@@ -2920,76 +2923,176 @@ function Dashboard() {
         {isSellModalOpen && selectedSellAsset && (
           <motion.div
             key="sell-modal-overlay"
-            className="modal-overlay"
+            className="sell-modal-overlay"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            style={{ display: 'flex' }}
+            onClick={() => setIsSellModalOpen(false)}
           >
             <motion.div
               key="sell-modal-card"
-              className="modal-card"
-              initial={{ scale: 0.9, y: 30, opacity: 0 }}
+              className="sell-modal-card"
+              initial={{ scale: 0.85, y: 40, opacity: 0 }}
               animate={{ scale: 1, y: 0, opacity: 1 }}
-              exit={{ scale: 0.9, y: 30, opacity: 0 }}
-              transition={{ duration: 0.25, ease: "easeOut" }}
+              exit={{ scale: 0.85, y: 40, opacity: 0 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+              onClick={(e) => e.stopPropagation()}
             >
-              <h2>Sell {selectedSellAsset.asset.symbol}</h2>
-              <div className="modal-price-box" style={{ backgroundColor: 'var(--bg-main)' }}>
-                <span style={{ color: 'var(--text-muted)' }}>Current Price</span>
-                <h3 style={{ color: 'var(--text-main)' }}>{formatCurrency(selectedSellAsset.asset.currentPrice, 4)}</h3>
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-                <button
-                  type="button"
-                  onClick={() => setOrderType('MARKET')}
-                  style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: orderType === 'MARKET' ? '#ef4444' : 'transparent', color: orderType === 'MARKET' ? 'white' : 'var(--text-main)', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }}
-                >Market</button>
-                <button
-                  type="button"
-                  onClick={() => setOrderType('LIMIT')}
-                  style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', background: orderType === 'LIMIT' ? '#ef4444' : 'transparent', color: orderType === 'LIMIT' ? 'white' : 'var(--text-main)', cursor: 'pointer', fontWeight: 'bold', transition: '0.2s' }}
-                >Limit (Auto)</button>
-              </div>
-
-              <div className="form-group" style={{ marginTop: '20px' }}>
-                <label style={{ color: 'var(--text-muted)' }}>Quantity to Sell (Max: {selectedSellAsset.quantity})</label>
-                <input
-                  type="number"
-                  min="0"
-                  max={selectedSellAsset.quantity}
-                  step="0.01"
-                  value={sellQuantity}
-                  onChange={(e) => setSellQuantity(e.target.value)}
-                  placeholder="e.g. 1.5"
-                  style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-main)', color: 'var(--text-main)' }}
-                />
-              </div>
-
-              {orderType === 'LIMIT' && (
-                <div className="form-group" style={{ marginTop: '16px' }}>
-                  <label style={{ color: 'var(--text-muted)' }}>Target Price (Auto Execute)</label>
-                  <input
-                    type="number" min="0" step="0.01"
-                    value={limitPrice} onChange={(e) => setLimitPrice(e.target.value)}
-                    placeholder="Enter target price"
-                    style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-main)', color: 'var(--text-main)' }}
-                  />
+              {/* Header Section */}
+              <div className="sell-modal-header">
+                <div className="sell-modal-title-box">
+                  <div className="sell-modal-icon">
+                    <ArrowUpFromLine size={24} color="white" />
+                  </div>
+                  <div>
+                    <h2 className="sell-modal-title">Sell {selectedSellAsset.asset.symbol}</h2>
+                    <p className="sell-modal-subtitle">{selectedSellAsset.asset.name}</p>
+                  </div>
                 </div>
-              )}
-
-              <div className="modal-summary">
-                <span style={{ color: 'var(--text-muted)' }}>Estimated Return:</span>
-                <span className="text-green">
-                  {formatCurrency((orderType === 'LIMIT' && limitPrice ? parseFloat(limitPrice) : selectedSellAsset.asset.currentPrice) * (sellQuantity || 0))}
-                </span>
+                <button
+                  onClick={() => setIsSellModalOpen(false)}
+                  className="sell-modal-close-btn"
+                >
+                  <X size={20} />
+                </button>
               </div>
 
-              <div className="modal-buttons">
-                <button className="cancel-btn" onClick={() => setIsSellModalOpen(false)}>Cancel</button>
-                <button className="sell-confirm-btn" onClick={handleSellAsset}>{orderType === 'LIMIT' ? 'Place Auto Order' : 'Confirm Sale'}</button>
+              {/* Content Section */}
+              <div className="sell-modal-content">
+                {/* Current Price Section */}
+                <div className="sell-modal-price-section">
+                  <div className="sell-price-card">
+                    <div className="sell-price-label">Current Market Price</div>
+                    <div className="sell-price-value">{formatCurrency(selectedSellAsset.asset.currentPrice, 4)}</div>
+                    <div className="sell-price-change">24h: <span style={{ color: '#10b981' }}>+2.5%</span></div>
+                  </div>
+                  <div className="sell-quantity-info">
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px' }}>Available</div>
+                    <div style={{ fontSize: '20px', fontWeight: '700', color: 'var(--text-main)' }}>{selectedSellAsset.quantity.toFixed(4)}</div>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>units</div>
+                  </div>
+                </div>
+
+                {/* Order Type Selector */}
+                <div className="sell-order-type-selector">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOrderType('MARKET');
+                      setLimitPrice('');
+                    }}
+                    className={`sell-order-type-btn ${orderType === 'MARKET' ? 'active' : ''}`}
+                  >
+                    <DollarSign size={18} />
+                    <div>
+                      <div className="sell-order-type-name">Market Order</div>
+                      <div className="sell-order-type-desc">Sell immediately</div>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOrderType('LIMIT')}
+                    className={`sell-order-type-btn ${orderType === 'LIMIT' ? 'active' : ''}`}
+                  >
+                    <ZapIcon size={18} />
+                    <div>
+                      <div className="sell-order-type-name">Limit Order</div>
+                      <div className="sell-order-type-desc">Auto execute</div>
+                    </div>
+                  </button>
+                </div>
+
+                {/* Quantity Input */}
+                <div className="sell-form-group">
+                  <div className="sell-form-label">
+                    <label>Quantity to Sell</label>
+                    <button
+                      type="button"
+                      className="sell-max-btn"
+                      onClick={() => setSellQuantity(selectedSellAsset.quantity.toString())}
+                    >
+                      Max
+                    </button>
+                  </div>
+                  <div className="sell-input-wrapper">
+                    <input
+                      type="number"
+                      min="0"
+                      max={selectedSellAsset.quantity}
+                      step="0.01"
+                      value={sellQuantity}
+                      onChange={(e) => setSellQuantity(e.target.value)}
+                      placeholder="0.00"
+                      className="sell-input"
+                    />
+                    <div className="sell-input-unit">{selectedSellAsset.asset.symbol}</div>
+                  </div>
+                  <div className="sell-input-hint">Max available: {selectedSellAsset.quantity.toFixed(4)}</div>
+                </div>
+
+                {/* Limit Price Input */}
+                {orderType === 'LIMIT' && (
+                  <motion.div
+                    className="sell-form-group"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.2 }}
+                  >
+                    <label className="sell-form-label">
+                      <span>Target Price (Auto Execute)</span>
+                    </label>
+                    <div className="sell-input-wrapper">
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={limitPrice}
+                        onChange={(e) => setLimitPrice(e.target.value)}
+                        placeholder="0.00"
+                        className="sell-input"
+                      />
+                      <div className="sell-input-unit">USD</div>
+                    </div>
+                    <div className="sell-input-hint">Order will execute when price reaches this target</div>
+                  </motion.div>
+                )}
+
+                {/* Summary Section */}
+                <div className="sell-summary-box">
+                  <div className="sell-summary-row">
+                    <span className="sell-summary-label">Total Value:</span>
+                    <span className="sell-summary-value">
+                      {formatCurrency((orderType === 'LIMIT' && limitPrice ? parseFloat(limitPrice) : selectedSellAsset.asset.currentPrice) * (sellQuantity || 0))}
+                    </span>
+                  </div>
+                  <div className="sell-summary-divider"></div>
+                  <div className="sell-summary-row">
+                    <span className="sell-summary-label">Profit/Loss:</span>
+                    <span className="sell-summary-value" style={{ color: (sellQuantity * selectedSellAsset.asset.currentPrice - sellQuantity * selectedSellAsset.avgBuyPrice) >= 0 ? '#10b981' : '#ef4444' }}>
+                      {formatCurrency(sellQuantity * selectedSellAsset.asset.currentPrice - sellQuantity * selectedSellAsset.avgBuyPrice)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="sell-modal-buttons">
+                <button
+                  className="sell-modal-btn-cancel"
+                  onClick={() => setIsSellModalOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="sell-modal-btn-confirm"
+                  onClick={handleSellAsset}
+                  disabled={!sellQuantity || sellQuantity <= 0}
+                >
+                  <ArrowUpFromLine size={18} />
+                  {orderType === 'LIMIT' ? 'Place Auto Order' : 'Confirm Sale'}
+                </button>
               </div>
             </motion.div>
           </motion.div>
