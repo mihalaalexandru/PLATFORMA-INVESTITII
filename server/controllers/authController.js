@@ -8,6 +8,7 @@ const qrcode = require('qrcode');
 
 const prisma = new PrismaClient();
 
+// inregistreaza un utilizator nou: verifica email-ul, hash-uieste parola si trimite email de bun venit
 const register = async (req, res) => {
   try {
     const { email, password, name } = req.body;
@@ -24,6 +25,7 @@ const register = async (req, res) => {
       return res.status(400).json({ message: 'This email is already registered' });
     }
 
+    // salvam userul cu parola criptata (hash + salt)
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
@@ -35,9 +37,8 @@ const register = async (req, res) => {
       },
     });
 
-    // (Aici este partea de sus a funcției, unde se creează user-ul...)
-    
-    // Generăm un token de anulare valabil 24 de ore
+    // generam un token de anulare valabil 24 de ore, trimis in emailul de bun venit
+    // (util daca cineva creeaza contul din greseala cu emailul altcuiva)
     const cancelToken = jwt.sign(
       { userId: newUser.id, action: 'cancel_registration' },
       process.env.JWT_SECRET,
@@ -68,7 +69,7 @@ const register = async (req, res) => {
       </div>
     `;
 
-    // ... restul codului de creare user ...
+    // ... trimitem emailul de bun venit, fara sa blocam raspunsul daca emailul esueaza
 
     try {
       await sendEmail({
@@ -96,6 +97,7 @@ const register = async (req, res) => {
   }
 };
 
+// sterge un cont proaspat creat folosind link-ul de anulare din emailul de bun venit
 const cancelRegistration = async (req, res) => {
   try {
     const { token } = req.params;
@@ -111,7 +113,7 @@ const cancelRegistration = async (req, res) => {
       return res.status(200).json({ message: 'Account successfully deleted. You will no longer receive emails from us.' });
     } catch (dbError) {
       if (dbError.code === 'P2025') {
-        
+        // P2025 = inregistrarea nu a fost gasita, adica era deja stearsa
         return res.status(200).json({ message: 'Account was already deleted.' });
       }
       throw dbError;
@@ -123,6 +125,7 @@ const cancelRegistration = async (req, res) => {
   }
 };
 
+// autentifica un utilizator cu email/parola, gestionand si fluxul 2FA
 const login = async (req, res) => {
   try {
     const { email, password, trustedDeviceToken } = req.body;
@@ -137,6 +140,7 @@ const login = async (req, res) => {
 
     let require2FA = user.isTwoFactorEnabled;
 
+    // daca dispozitivul e de incredere (rememberMe la 2FA anterior), sarim peste 2FA
     if (require2FA && trustedDeviceToken) {
       try {
         const decoded = jwt.verify(trustedDeviceToken, process.env.JWT_SECRET);
@@ -172,6 +176,7 @@ const login = async (req, res) => {
   }
 };
 
+// autentificare/inregistrare prin Google (folosita cand frontend-ul trimite datele profilului Google)
 const googleLogin = async (req, res) => {
   try {
     const { email, name, picture } = req.body;
@@ -179,6 +184,7 @@ const googleLogin = async (req, res) => {
     let user = await prisma.user.findUnique({ where: { email } });
     let isNewUser = false;
 
+    // daca userul nu exista, il cream; altfel actualizam poza de profil daca lipseste
     if (!user) {
       user = await prisma.user.create({
         data: {
@@ -251,6 +257,7 @@ const googleLogin = async (req, res) => {
   }
 };
 
+// verifica codul 2FA introdus la login si emite token-ul final de autentificare
 const verify2FALogin = async (req, res) => {
   try {
     const { userId, token: twoFactorCode, rememberMe } = req.body;
@@ -273,6 +280,8 @@ const verify2FALogin = async (req, res) => {
 
     const jwtToken = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '30d' });
     
+    // daca userul a bifat "tine-ma minte", generam un token de dispozitiv de incredere
+    // ca sa sara peste verificarea 2FA data viitoare
     let trustedDeviceToken = null;
     if (rememberMe) {
       trustedDeviceToken = jwt.sign({ trustedDevice: true, userId: user.id }, process.env.JWT_SECRET, { expiresIn: '30d' });
@@ -296,6 +305,7 @@ const verify2FALogin = async (req, res) => {
   }
 };
 
+// autentificare rapida folosind token-ul de dispozitiv de incredere (fara 2FA)
 const loginWithTrustedDevice = async (req, res) => {
   try {
     const { userId, trustedDeviceToken } = req.body;
@@ -327,16 +337,18 @@ const loginWithTrustedDevice = async (req, res) => {
   }
 };
 
+// trimite un email cu link de resetare a parolei, daca emailul exista in baza de date
 const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
     const user = await prisma.user.findUnique({ where: { email } });
 
     if (!user) {
-      // Returnam mereu 200 pentru a preveni user enumeration
+      // returnam mereu 200 pentru a preveni user enumeration (nu dezvaluim daca emailul exista)
       return res.status(200).json({ message: 'Email sent successfully' });
     }
 
+    // generam un token de resetare valabil 1 ora
     const resetToken = crypto.randomBytes(20).toString('hex');
     const resetTokenExpiry = new Date(Date.now() + 3600000);
 
@@ -379,6 +391,7 @@ const forgotPassword = async (req, res) => {
 
       res.status(200).json({ message: 'Email sent successfully' });
     } catch (error) {
+      // daca trimiterea emailului esueaza, anulam token-ul de resetare salvat
       await prisma.user.update({
         where: { email },
         data: {
@@ -395,6 +408,7 @@ const forgotPassword = async (req, res) => {
   }
 };
 
+// seteaza o parola noua folosind token-ul de resetare, daca acesta e valid si neexpirat
 const resetPassword = async (req, res) => {
   try {
     const { token } = req.params;
@@ -432,6 +446,7 @@ const resetPassword = async (req, res) => {
   }
 };
 
+// actualizeaza datele de profil ale utilizatorului (nume, moneda, poza de profil)
 const updateUser = async (req, res) => {
   try {
     const { userId, name, currency, profilePicture } = req.body;
@@ -459,6 +474,7 @@ const updateUser = async (req, res) => {
   }
 };
 
+// schimba parola utilizatorului, verificand mai intai parola curenta
 const changePassword = async (req, res) => {
   try {
     const { userId, currentPassword, newPassword } = req.body;
@@ -484,6 +500,7 @@ const changePassword = async (req, res) => {
   }
 };
 
+// sterge definitiv contul utilizatorului si toate datele asociate (portofoliu, tranzactii etc.)
 const deleteAccount = async (req, res) => {
   try {
     const rawId = req.params.id || req.params.userId;
@@ -499,7 +516,7 @@ const deleteAccount = async (req, res) => {
     
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    // Utilizatorii Google au password null (sau cu "Google!" pentru cei vechi)
+    // utilizatorii Google au password null (sau cu "Google!" pentru cei vechi)
     const isGoogleUser = !user.password || user.password.includes('Google!');
     if (!isGoogleUser) {
       if (!password) return res.status(400).json({ message: 'Password is required to delete account' });
@@ -507,6 +524,7 @@ const deleteAccount = async (req, res) => {
       if (!isMatch) return res.status(401).json({ message: 'Invalid password' });
     }
 
+    // daca are 2FA activat, cerem si codul 2FA inainte de stergere
     if (user.isTwoFactorEnabled) {
       if (!twoFactorCode) return res.status(400).json({ message: '2FA code is required' });
       const verified = speakeasy.totp.verify({
@@ -543,6 +561,7 @@ const deleteAccount = async (req, res) => {
       });
     } catch (mailErr) {}
 
+    // stergem toate datele asociate userului, in ordine, inainte de a sterge userul insusi
     try { await prisma.portfolioHistory.deleteMany({ where: { userId: id } }); } catch (e) {}
     try { await prisma.portfolio.deleteMany({ where: { userId: id } }); } catch (e) {}
     try { await prisma.transaction.deleteMany({ where: { userId: id } }); } catch (e) {}
@@ -565,6 +584,7 @@ const deleteAccount = async (req, res) => {
   }
 };
 
+// genereaza un secret 2FA nou si un cod QR pentru configurarea aplicatiei de autentificare
 const generate2FA = async (req, res) => {
   try {
     const { userId } = req.body;
@@ -583,6 +603,7 @@ const generate2FA = async (req, res) => {
   }
 };
 
+// activeaza 2FA dupa ce utilizatorul confirma un cod valid generat cu secretul primit
 const enable2FA = async (req, res) => {
   try {
     const { userId, token } = req.body;
@@ -619,6 +640,7 @@ const enable2FA = async (req, res) => {
   }
 };
 
+// dezactiveaza 2FA pentru utilizator si sterge secretul salvat
 const disable2FA = async (req, res) => {
   try {
     const { userId } = req.body;

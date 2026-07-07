@@ -3,6 +3,7 @@ const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
 const { buyAsset, sellAsset, depositFunds, withdrawFunds, getTransactions } = require('../controllers/tradeController');
 
+// rutele pentru tranzactii: depunere, cumparare, vanzare, istoric, retragere
 router.post('/deposit', requireAuth, depositFunds);
 router.post('/buy', requireAuth, buyAsset);
 router.post('/sell', requireAuth, sellAsset);

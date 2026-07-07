@@ -1,6 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
+// creeaza o alerta de pret noua pentru un utilizator (ex: notifica cand pretul depaseste o valoare)
 const createAlert = async (req, res) => {
   try {
     const { userId, symbol, targetPrice, condition } = req.body;
@@ -18,6 +19,7 @@ const createAlert = async (req, res) => {
   }
 };
 
+// returneaza toate alertele de pret ale unui utilizator, cele mai noi primele
 const getAlerts = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -31,6 +33,7 @@ const getAlerts = async (req, res) => {
   }
 };
 
+// sterge o alerta de pret dupa id
 const deleteAlert = async (req, res) => {
   try {
     const { id } = req.params;

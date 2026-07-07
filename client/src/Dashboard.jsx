@@ -72,12 +72,63 @@ const CURRENCY_SYMBOLS = {
   RON: 'RON'
 };
 
+// formateaza capitalizarea de piata intr-un format prescurtat (K, M, B, T)
 const formatMarketCap = (value) => {
   if (!value) return "N/A";
   if (value >= 1e12) return `$${(value / 1e12).toFixed(2)}T`;
   if (value >= 1e9) return `$${(value / 1e9).toFixed(2)}B`;
   if (value >= 1e6) return `$${(value / 1e6).toFixed(2)}M`;
   return `$${value.toLocaleString()}`;
+};
+
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+// apeleaza API-ul Gemini pentru chatbot-ul AI, incercand mai multe modele si reincercand
+// automat la erori temporare (503/429), pentru robustete
+const callGeminiAPI = async (apiKey, promptText) => {
+  let lastError = null;
+
+  for (const model of GEMINI_MODELS) {
+    const maxRetries = 3;
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: promptText }] }] })
+          }
+        );
+
+        // la eroare temporara (server ocupat) asteptam si reincercam
+        if (response.status === 503 || response.status === 429) {
+          lastError = new Error(`HTTP error! status: ${response.status}`);
+          await sleep(800 * (attempt + 1));
+          continue;
+        }
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const botText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!botText) {
+          throw new Error('Empty response from AI');
+        }
+        return botText;
+      } catch (err) {
+        lastError = err;
+        if (attempt === maxRetries - 1) break;
+        await sleep(800 * (attempt + 1));
+      }
+    }
+  }
+
+  throw lastError || new Error('AI request failed');
 };
 
 const containerVariants = {
@@ -183,6 +234,7 @@ function Dashboard() {
 
   const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#ef4444'];
 
+  // formateaza o suma in moneda preferata a utilizatorului (USD/EUR/RON)
   const formatCurrency = (value, customDecimals = null) => {
     if (value === undefined || value === null) return '';
     const currency = user?.currency || 'USD';
@@ -197,6 +249,7 @@ function Dashboard() {
     return `${CURRENCY_SYMBOLS[currency]}${convertedValue.toFixed(decimals)}`;
   };
 
+  // schimba moneda preferata si salveaza preferinta in profilul utilizatorului
   const handleCurrencyChange = async (newCurrency) => {
     try {
       const updatedUser = { ...user, currency: newCurrency };
@@ -215,6 +268,7 @@ function Dashboard() {
     }
   };
 
+  // preia lista de active de pe server (apelata la incarcare si periodic la fiecare 3 secunde)
   const fetchAssets = async () => {
     try {
       const response = await axios.get('http://localhost:3000/api/assets');
@@ -222,6 +276,8 @@ function Dashboard() {
     } catch (error) { }
   };
 
+  // la fiecare actualizare de preturi, sincronizam activele selectate (grafic, buy/sell/alert)
+  // si recalculam valorile portofoliului (profit/pierdere) cu preturile live
   useEffect(() => {
     if (assets.length > 0) {
       setSelectedChartAsset(prev => {
@@ -250,8 +306,8 @@ function Dashboard() {
         return liveAsset && liveAsset.currentPrice !== prev.currentPrice ? liveAsset : prev;
       });
 
-      // Recompute portfolio derived values (currentValue, profitLoss, profitLossPercentage)
-      // using the latest asset prices so dashboard/portfolio update in real-time
+      // recalculam valorile derivate ale portofoliului (currentValue, profitLoss, profitLossPercentage)
+      // folosind cele mai noi preturi, ca dashboard-ul sa se actualizeze in timp real
       setPortfolio(prev => {
         if (!prev || prev.length === 0) return prev;
         return prev.map(item => {
@@ -273,6 +329,7 @@ function Dashboard() {
     }
   }, [assets]);
 
+  // preia alertele de pret si comenzile automate ale utilizatorului la login
   useEffect(() => {
     if (user && user.id) {
       axios.get(`http://localhost:3000/api/alerts/${user.id}`)
@@ -285,6 +342,8 @@ function Dashboard() {
     }
   }, [user]);
 
+  // verifica local daca vreo alerta de pret a fost atinsa cu preturile curente,
+  // afiseaza o notificare cu sunet si sterge alerta declansata
   useEffect(() => {
     if (assets.length > 0 && priceAlerts.length > 0) {
       priceAlerts.forEach(alert => {
@@ -319,6 +378,7 @@ function Dashboard() {
     }
   }, [assets, priceAlerts]);
 
+  // preia stirile de piata cand utilizatorul deschide tab-ul de stiri
   useEffect(() => {
     const fetchNews = async () => {
       if (activeView === 'news') {
@@ -340,6 +400,7 @@ function Dashboard() {
     fetchNews();
   }, [activeView]);
 
+  // preia istoricul tranzactiilor cand se deschide tab-ul de tranzactii sau dashboard
   useEffect(() => {
     const fetchTransactions = async () => {
       try {
@@ -355,6 +416,8 @@ function Dashboard() {
     }
   }, [activeView, user]);
 
+  // verifica autentificarea la incarcarea paginii; daca nu exista token, redirectioneaza la login
+  // altfel incarca datele userului si porneste actualizarea periodica a preturilor
   useEffect(() => {
     const token = localStorage.getItem('token');
     const userData = localStorage.getItem('user');
@@ -373,7 +436,7 @@ function Dashboard() {
     }
   }, [navigate]);
 
-  // Apply premium theme styles
+  // aplica stilurile temei premium prin variabile CSS globale
   useEffect(() => {
     if (isPremium) {
       document.documentElement.style.setProperty('--bg-main', '#1a1d27');
@@ -385,7 +448,7 @@ function Dashboard() {
       document.documentElement.style.setProperty('--border-color', 'rgba(132, 142, 156, 0.2)');
       document.body.style.background = '#0b0e14';
     } else {
-      // Reset to default CSS variables
+      // resetam la variabilele CSS implicite (tema classic)
       document.documentElement.style.removeProperty('--bg-main');
       document.documentElement.style.removeProperty('--bg-card');
       document.documentElement.style.removeProperty('--bg-hover');
@@ -401,6 +464,7 @@ function Dashboard() {
     setMarketPage(1);
   }, [searchQuery, marketFilter]);
 
+  // preia portofoliul, istoricul soldului, watchlist-ul si comenzile automate
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -425,6 +489,7 @@ function Dashboard() {
     }
   }, [activeView, user]);
 
+  // genereaza automat notificari inteligente pe baza starii portofoliului (concentrare, castig/pierdere)
   useEffect(() => {
     const newAlerts = [];
 
@@ -491,6 +556,7 @@ function Dashboard() {
     setAlerts(newAlerts);
   }, [portfolio, user]);
 
+  // reincarca datele graficului (lumanari) pentru un asset
   const handleRefreshChartData = async (assetId) => {
     try {
       const res = await axios.get(`http://localhost:3000/api/assets/history/${assetId}`);
@@ -498,6 +564,7 @@ function Dashboard() {
     } catch (err) { }
   };
 
+  // deschide modalul cu graficul detaliat pentru un asset selectat
   const handleOpenChart = async (asset) => {
     setSelectedChartAsset(asset);
     setSelectedAsset(asset);
@@ -513,6 +580,7 @@ function Dashboard() {
     } catch (err) { }
   };
 
+  // adauga/elimina un asset din watchlist si reincarca lista
   const handleToggleWatchlist = async (assetId) => {
     try {
       await axios.post('http://localhost:3000/api/watchlist/toggle', {
@@ -533,6 +601,7 @@ function Dashboard() {
     }
   };
 
+  // cumpara un asset: plaseaza fie o comanda LIMIT (auto-order), fie o cumparare imediata (MARKET)
   const handleBuyAsset = async () => {
     if (!buyQuantity || buyQuantity <= 0) return;
 
@@ -586,6 +655,7 @@ function Dashboard() {
     }
   };
 
+  // vinde un asset: plaseaza fie o comanda LIMIT (auto-order), fie o vanzare imediata (MARKET)
   const handleSellAsset = async () => {
     if (!sellQuantity || sellQuantity <= 0) return;
     if (sellQuantity > selectedSellAsset.quantity) {
@@ -637,6 +707,7 @@ function Dashboard() {
     }
   };
 
+  // anuleaza o comanda automata (limit order) inainte de executare
   const handleCancelAutoOrder = async (id) => {
     try {
       await axios.delete(`http://localhost:3000/api/auto-orders/${id}`);
@@ -647,36 +718,37 @@ function Dashboard() {
     }
   };
 
+  // proceseaza depunerea de fonduri: valideaza datele cardului si trimite cererea catre server
   const handleDepositSubmit = async () => {
-    // 1. Validare Sumă
+    // 1. validare suma
     if (!depositData.amount || isNaN(depositData.amount) || parseFloat(depositData.amount) <= 0) {
       return toast.warning('Please enter a valid amount.');
     }
 
-    // 2. Validare Numar Card (Fix 16 cifre)
+    // 2. validare numar card (fix 16 cifre)
     if (!depositData.cardNumber || depositData.cardNumber.length !== 16) {
       return toast.warning('Card number must be exactly 16 digits.');
     }
 
-    // 3. Validare Dată Expirare
+    // 3. validare data expirare
     if (!depositData.expiry || !/^(0[1-9]|1[0-2])\/\d{2}$/.test(depositData.expiry)) {
       return toast.warning('Expiry date must be in MM/YY format (e.g., 12/25).');
     }
 
-    // Verificăm dacă nu e expirat deja cardul (lună/an)
+    // verificam daca nu e expirat deja cardul (luna/an)
     const [month, year] = depositData.expiry.split('/');
-    const currentYear = new Date().getFullYear() % 100; // Ultimele 2 cifre din an (ex: 24)
+    const currentYear = new Date().getFullYear() % 100; // ultimele 2 cifre din an (ex: 24)
     const currentMonth = new Date().getMonth() + 1;
     if (parseInt(year) < currentYear || (parseInt(year) === currentYear && parseInt(month) < currentMonth)) {
       return toast.warning('This card has expired.');
     }
 
-    // 4. Validare CVV (Fix 3 cifre)
+    // 4. validare CVV (fix 3 cifre)
     if (!depositData.cvv || depositData.cvv.length !== 3) {
       return toast.warning('CVV must be exactly 3 digits.');
     }
 
-    // 5. Validare Nume
+    // 5. validare nume
     if (!depositData.cardName || depositData.cardName.trim().length < 3) {
       return toast.warning('Please enter a valid cardholder name.');
     }
@@ -692,7 +764,7 @@ function Dashboard() {
       setUser(updatedUser);
       localStorage.setItem('user', JSON.stringify(updatedUser));
 
-      // --- COD NOU PENTRU SALVARE CARD ---
+      // salvam cardul local, daca utilizatorul a bifat optiunea
       if (saveCardOption) {
         const newCard = {
           id: Date.now().toString(),
@@ -704,17 +776,17 @@ function Dashboard() {
         setSavedCards(updatedCards);
         localStorage.setItem('investPro_cards', JSON.stringify(updatedCards));
       }
-      // --- END COD NOU ---
 
       toast.success('Funds deposited successfully!');
       setIsDepositModalOpen(false);
       setDepositData({ amount: '', cardNumber: '', cardName: '', expiry: '', cvv: '' });
-      setSaveCardOption(false); // Resetăm căsuța
+      setSaveCardOption(false); // resetam casuta
     } catch (err) {
       toast.error(err.response?.data?.message || 'Deposit failed');
     }
   };
 
+  // proceseaza retragerea de fonduri, verificand soldul disponibil si calculand taxa
   const handleWithdrawSubmit = async () => {
     if (!withdrawAmount || isNaN(withdrawAmount) || parseFloat(withdrawAmount) <= 0) {
       return toast.warning('Please enter a valid amount.');
@@ -756,6 +828,7 @@ function Dashboard() {
     }
   };
 
+  // creeaza o alerta de pret noua pentru asset-ul selectat
   const handleAddPriceAlert = async (e) => {
     e.preventDefault();
     if (!alertTargetPrice) return toast.warning('Please enter a target price');
@@ -776,6 +849,7 @@ function Dashboard() {
     }
   };
 
+  // sterge o alerta de pret existenta
   const handleDeleteAlert = async (id) => {
     try {
       await axios.delete(`http://localhost:3000/api/alerts/${id}`);
@@ -786,6 +860,7 @@ function Dashboard() {
     }
   };
 
+  // genereaza si descarca un fisier PDF cu istoricul tranzactiilor utilizatorului
   const exportTransactionsPDF = () => {
     try {
       const doc = new jsPDF();
@@ -831,6 +906,8 @@ function Dashboard() {
     }
   };
 
+  // trimite mesajul utilizatorului catre asistentul AI (Gemini), construind un context
+  // cu datele live ale platformei (portofoliu, top castigatori/pierzatori etc.)
   const handleChatSubmit = async (e) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
@@ -848,27 +925,68 @@ function Dashboard() {
         throw new Error("API Key missing");
       }
 
-      const promptText = `You are InvestPro AI, a smart financial assistant integrated into a trading platform. Answer concisely, friendly, professionally and strictly in English to the following user question: ${userMsg.text}`;
+      const gainers = [...assets]
+        .filter(a => typeof a.change24h === 'number')
+        .sort((a, b) => b.change24h - a.change24h)
+        .slice(0, 3)
+        .map(a => `${a.symbol} (${a.change24h >= 0 ? '+' : ''}${a.change24h.toFixed(2)}%, ${formatCurrency(a.currentPrice)})`)
+        .join(', ') || 'no data available';
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: promptText }] }]
-          })
-        }
-      );
+      const losers = [...assets]
+        .filter(a => typeof a.change24h === 'number')
+        .sort((a, b) => a.change24h - b.change24h)
+        .slice(0, 3)
+        .map(a => `${a.symbol} (${a.change24h.toFixed(2)}%, ${formatCurrency(a.currentPrice)})`)
+        .join(', ') || 'no data available';
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+      const avgChange = assets.length > 0
+        ? (assets.reduce((sum, a) => sum + (a.change24h || 0), 0) / assets.length).toFixed(2)
+        : null;
 
-      const data = await response.json();
-      const botText = data.candidates[0].content.parts[0].text;
+      const pendingOrdersCount = autoOrders.length;
+      const openPositionsCount = portfolio.length;
+      const activeTradesCount = pendingOrdersCount + openPositionsCount;
+
+      const portfolioValue = portfolio.reduce((sum, p) => sum + (p.quantity * p.asset.currentPrice), 0);
+
+      // incercam sa detectam despre ce asset anume intreaba utilizatorul (ex: "ce parere ai despre bitcoin")
+      const commonAliases = { btc: 'bitcoin', eth: 'ethereum', doge: 'dogecoin' };
+      const queryLower = userMsg.text.toLowerCase();
+      const queryWords = queryLower.split(/[^a-z0-9]+/).filter(Boolean).map(w => commonAliases[w] || w);
+
+      const mentionedAssets = assets.filter(a => {
+        const symbolLower = a.symbol?.toLowerCase();
+        const nameLower = a.name?.toLowerCase();
+        const nameWords = nameLower ? nameLower.split(/[^a-z0-9]+/).filter(Boolean) : [];
+        return (symbolLower && queryWords.includes(symbolLower)) ||
+          (nameLower && queryLower.includes(nameLower)) ||
+          nameWords.some(w => w.length > 2 && queryWords.includes(w));
+      }).slice(0, 8);
+
+      const mentionedAssetsInfo = mentionedAssets.length > 0
+        ? mentionedAssets.map(a => `${a.name} (${a.symbol}, ${a.type}): price ${formatCurrency(a.currentPrice)}, 24h change ${a.change24h >= 0 ? '+' : ''}${(a.change24h || 0).toFixed(2)}%`).join('\n')
+        : 'none matched — if the user named a specific asset not in this list, say it is not available on the platform';
+
+      const dataContext = `
+Live platform data you must use to answer (do not invent other numbers, do not use placeholders like "[e.g., ...]" or "[Number]" — always state the real values below):
+- Cash balance: ${user ? formatCurrency(user.balance) : 'unknown (user not logged in)'}
+- Portfolio value (open positions): ${formatCurrency(portfolioValue)}
+- Open positions: ${openPositionsCount}
+- Pending auto (limit) orders: ${pendingOrdersCount}
+- Active trades (open positions + pending orders): ${activeTradesCount}
+- Average 24h change across ${assets.length} tracked assets: ${avgChange !== null ? `${avgChange}%` : 'no data available'}
+- Top gainers (24h): ${gainers}
+- Top losers (24h): ${losers}
+- Assets specifically mentioned in the user's question (use these exact numbers if asked about a specific stock/crypto):
+${mentionedAssetsInfo}
+Note: this platform tracks its own list of stocks/cryptos, not external indices like the S&P 500, Dow Jones or Nasdaq — if asked about those, say you only have data for assets available on the platform and refer to the numbers above instead.`;
+
+      const promptText = `You are InvestPro AI, a smart financial assistant integrated into a trading platform. Answer concisely, friendly, professionally and strictly in English to the user's question below. Always use the real live data provided — never reply with generic template text or bracketed placeholders (e.g. "[Number]", "[e.g., ...]"), and never tell the user to go check a dashboard/widget for a number you already have here — just state it directly. If a piece of data isn't available, say so plainly instead of guessing.
+${dataContext}
+
+User question: ${userMsg.text}`;
+
+      const botText = await callGeminiAPI(apiKey, promptText);
 
       setChatMessages(prev => {
         const newMsgs = [...prev];
@@ -879,15 +997,20 @@ function Dashboard() {
 
     } catch (error) {
       console.error(error);
+      const isOverloaded = /503|429/.test(error?.message || '');
+      const errorText = isOverloaded
+        ? "The AI service is currently overloaded. Please try again in a moment."
+        : "Sorry, I encountered a connection error with the AI server.";
       setChatMessages(prev => {
         const newMsgs = [...prev];
         newMsgs.pop();
-        newMsgs.push({ text: "Sorry, I encountered a connection error with the AI server.", sender: 'bot' });
+        newMsgs.push({ text: errorText, sender: 'bot' });
         return newMsgs;
       });
     }
   };
 
+  // delogheaza utilizatorul, stergand toate datele de sesiune din localStorage
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -896,6 +1019,7 @@ function Dashboard() {
     navigate('/');
   };
 
+  // genereaza codul QR necesar pentru configurarea 2FA intr-o aplicatie de autentificare
   const handleGenerate2FA = async () => {
     try {
       const res = await axios.post('http://localhost:3000/api/auth/2fa/generate', { userId: user.id });
@@ -906,6 +1030,7 @@ function Dashboard() {
     }
   };
 
+  // activeaza 2FA dupa confirmarea codului generat de aplicatia de autentificare
   const handleEnable2FA = async () => {
     if (twoFactorCode.length !== 6) return toast.warning('Please enter a 6-digit code');
     try {
@@ -924,6 +1049,7 @@ function Dashboard() {
     }
   };
 
+  // dezactiveaza 2FA pentru contul curent
   const handleDisable2FA = async () => {
     try {
       const res = await axios.post('http://localhost:3000/api/auth/2fa/disable', { userId: user.id });
@@ -937,6 +1063,7 @@ function Dashboard() {
     }
   };
 
+  // sterge definitiv contul, dupa confirmarea parolei (si a codului 2FA, daca e activat)
   const handleDeleteAccount = async () => {
     if (!deletePassword && !(user.password && user.password.includes('Google!'))) {
       return toast.warning('Password is required to delete your account.');
@@ -962,6 +1089,7 @@ function Dashboard() {
     }
   };
 
+  // transforma datele brute de istoric de pret intr-un format de lumanari (OHLC) pentru grafic
   const formatChartData = (historicalData) => {
     if (!historicalData || historicalData.length === 0) return { candles: [], volume: [] };
 
@@ -1010,6 +1138,8 @@ function Dashboard() {
     return { candles, volume };
   };
 
+  // randeaza continutul principal al dashboard-ului in functie de tab-ul activ (activeView):
+  // overview, portofoliu, piata, tranzactii, stiri, setari etc.
   const renderContent = () => {
     const totalPortfolioValue = portfolio.reduce((sum, item) => sum + item.currentValue, 0);
     const totalInvested = portfolio.reduce((sum, item) => sum + (item.quantity * item.avgBuyPrice), 0);
@@ -1545,7 +1675,7 @@ function Dashboard() {
               </motion.div>
 
               <motion.div variants={itemVariants} style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '16px', padding: '24px', display: 'flex', flexDirection: 'column' }}>
-                <span style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '12px' }}>ROI Yield</span>
+                <span style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '12px' }}>ROI</span>
                 <span style={{ color: 'var(--text-main)', fontSize: '28px', fontWeight: 'bold', marginBottom: '16px', letterSpacing: '-0.5px' }}>
                   {isPnLPositive ? '+' : ''}{roiPercentage}%
                 </span>
@@ -1610,6 +1740,7 @@ function Dashboard() {
                           color: isPremium ? '#f0f3f7' : '#0f172a'
                         }}
                         labelStyle={{ color: isPremium ? '#b0b8c4' : '#64748b', fontSize: '12px' }}
+                        itemStyle={{ fontWeight: 'bold', color: isPremium ? '#f0f3f7' : '#0f172a' }}
                         formatter={(value) => [formatCurrency(value), 'Profit/Loss']}
                       />
                       <Bar dataKey="pnl" radius={[4, 4, 4, 4]}>
@@ -1791,6 +1922,7 @@ function Dashboard() {
         );
 
       case 'news':
+        // returneaza o imagine pentru stire, cu o imagine implicita daca stirea nu are una
         const getImageUrl = (item) => {
           if (item.thumbnail) return item.thumbnail;
           if (item.enclosure && item.enclosure.link) return item.enclosure.link;
@@ -2113,7 +2245,7 @@ function Dashboard() {
 
                     {user?.isTwoFactorEnabled ? (
                       <button
-                        onClick={() => setIsDisable2FAModalOpen(true)} // Aici am schimbat funcția
+                        onClick={() => setIsDisable2FAModalOpen(true)}
                         className="w-full py-3 rounded-lg text-sm font-bold transition-all hover:bg-opacity-10"
                         style={{ background: 'transparent', color: '#f6465d', border: '1px solid #f6465d' }}
                       >
@@ -2289,7 +2421,7 @@ function Dashboard() {
                 Are you absolutely sure you want to delete your account? This action is irreversible. All your portfolio assets, transaction history, and remaining funds will be permanently removed.
               </p>
 
-              {/* Câmpul de parolă (ascuns dacă utilizatorul s-a logat cu Google) */}
+              {/* campul de parola (ascuns daca utilizatorul s-a logat cu Google) */}
               {!(user?.password && user.password.includes('Google!')) && (
                 <div className="form-group" style={{ marginBottom: '16px' }}>
                   <label style={{ color: 'var(--text-muted)', fontSize: '13px', display: 'block', marginBottom: '8px' }}>
@@ -2305,7 +2437,7 @@ function Dashboard() {
                 </div>
               )}
 
-              {/* Câmpul de 2FA (afișat doar dacă utilizatorul are 2FA activat) */}
+              {/* campul de 2FA (afisat doar daca utilizatorul are 2FA activat) */}
               {user?.isTwoFactorEnabled && (
                 <div className="form-group" style={{ marginBottom: '16px' }}>
                   <label style={{ color: 'var(--text-muted)', fontSize: '13px', display: 'block', marginBottom: '8px' }}>
@@ -2327,7 +2459,7 @@ function Dashboard() {
                   className="cancel-btn"
                   onClick={() => {
                     setIsDeleteModalOpen(false);
-                    setDeletePassword(''); // Curățăm câmpul dacă se anulează
+                    setDeletePassword(''); // curatam campul daca se anuleaza
                     setDeleteTwoFactorCode('');
                   }}
                   style={{ flex: 1 }}
@@ -2336,7 +2468,7 @@ function Dashboard() {
                 </button>
                 <button
                   className="confirm-btn"
-                  onClick={handleDeleteAccount} // Funcția ta de ștergere
+                  onClick={handleDeleteAccount}
                   style={{ flex: 1, backgroundColor: '#ef4444', color: 'white', transition: '0.2s ease' }}
                 >
                   Delete Permanently
@@ -2533,7 +2665,7 @@ function Dashboard() {
                 >
                   <option value="bank">Bank Transfer ($3.00 Fixed Fee)</option>
 
-                  {/* --- AICI AFIȘĂM DINAMIC CARDURILE --- */}
+                  {/* afisam dinamic cardurile salvate */}
                   {savedCards.map(card => (
                     <option key={card.id} value={`card_${card.id}`}>
                       Card {card.cardName} (•••• {card.last4}) - 1.5% Fee

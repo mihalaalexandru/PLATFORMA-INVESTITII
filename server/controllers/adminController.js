@@ -2,6 +2,7 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const { fetchStockData } = require('../utils/alphaVantage');
 
+// sincronizeaza manual pretul unui asset cu date reale de la Alpha Vantage (folosit de admin)
 const syncSingleAsset = async (req, res) => {
   try {
     const { symbol } = req.body;

@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 
 const CancelAccount = () => {
-  const { token } = useParams(); // Preluăm token-ul din URL
+  const { token } = useParams(); // preluam token-ul de anulare din URL
   const navigate = useNavigate();
   const [status, setStatus] = useState('loading'); // 'loading', 'success', 'error'
   const [message, setMessage] = useState('Processing your request...');
 
   useEffect(() => {
+    // apeleaza API-ul pentru a sterge contul folosind token-ul din link-ul de email
     const cancelRegistration = async () => {
       try {
         const response = await fetch(`http://localhost:3000/api/auth/cancel-registration/${token}`, {

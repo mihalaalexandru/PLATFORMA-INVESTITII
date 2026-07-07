@@ -15,6 +15,7 @@ function App() {
     <ThemeProvider>
       <Router>
         <Routes>
+          {/* toate rutele aplicatiei: pagina principala, autentificare, dashboard etc. */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/register" element={<Register />} />
           <Route path="/login" element={<Register />} />

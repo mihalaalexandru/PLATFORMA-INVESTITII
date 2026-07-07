@@ -8,6 +8,7 @@ export default function AuthSuccess() {
   const location = useLocation();
 
   useEffect(() => {
+    // extragem token-ul si datele userului trimise in query params dupa login cu Google
     const params = new URLSearchParams(location.search);
     const token = params.get('token');
     const userDataString = params.get('user');
@@ -16,6 +17,7 @@ export default function AuthSuccess() {
       try {
         const user = JSON.parse(decodeURIComponent(userDataString));
         
+        // salvam sesiunea local si redirectionam spre dashboard
         localStorage.setItem('token', token);
         localStorage.setItem('user', JSON.stringify(user));
         

@@ -21,6 +21,7 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// inregistram toate rutele API ale aplicatiei
 app.use('/api/auth', authRoutes);
 app.use('/api/assets', assetRoutes);
 app.use('/api/trade', tradeRoutes);
@@ -30,14 +31,15 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/alerts', alertRoutes);
 app.use('/api/auto-orders', autoOrderRoutes);
 
-// --- WebSocket Server ---
+// server HTTP + server WebSocket pentru actualizari live de preturi
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-// subscriptions: Map<ws, { symbol, timeframe }>
+// tinem evidenta abonamentelor: Map<conexiune_ws, { symbol, timeframe }>
 const subscriptions = new Map();
 
 wss.on('connection', (ws) => {
+  // clientul trimite un mesaj de abonare cu simbolul si timeframe-ul dorit
   ws.on('message', (raw) => {
     try {
       const msg = JSON.parse(raw.toString());
@@ -46,11 +48,13 @@ wss.on('connection', (ws) => {
       }
     } catch (_) {}
   });
+  // curatam abonamentul cand conexiunea se inchide sau apare o eroare
   ws.on('close', () => subscriptions.delete(ws));
   ws.on('error', () => subscriptions.delete(ws));
 });
 
-// Called by marketSimulator on every candle update
+// functie apelata de marketSimulator la fiecare update de lumanare (candle)
+// trimite datele doar clientilor abonati la simbolul/timeframe-ul respectiv
 setBroadcastFn((symbol, timeframe, candle) => {
   const payload = JSON.stringify({ type: 'candle', symbol, timeframe, candle });
   for (const [ws, sub] of subscriptions) {
@@ -60,7 +64,9 @@ setBroadcastFn((symbol, timeframe, candle) => {
   }
 });
 
+// pornim job-ul care verifica alertele de pret si comenzile automate
 startPriceTracker();
+// pornim simulatorul care actualizeaza preturile activelor periodic
 startSimulator();
 
 const PORT = process.env.PORT || 3000;

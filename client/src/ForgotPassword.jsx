@@ -14,6 +14,7 @@ function ForgotPassword() {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e) => {
+    // trimite emailul catre server pentru a primi link-ul de resetare a parolei
     e.preventDefault();
     setIsLoading(true);
     try {

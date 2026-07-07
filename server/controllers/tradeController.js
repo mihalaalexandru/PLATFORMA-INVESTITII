@@ -1,6 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
+// adauga fonduri in contul utilizatorului si salveaza noul sold in istoric
 const depositFunds = async (req, res) => {
   try {
     const { userId, amount } = req.body;
@@ -28,6 +29,7 @@ const depositFunds = async (req, res) => {
   }
 };
 
+// cumpara un asset: verifica soldul, scade banii, adauga in portofoliu si inregistreaza tranzactia
 const buyAsset = async (req, res) => {
   try {
     const { userId, assetId, quantity } = req.body;
@@ -51,6 +53,7 @@ const buyAsset = async (req, res) => {
 
     const newBalance = user.balance - totalCost;
 
+    // folosim o tranzactie prisma ca toate operatiile sa reuseasca sau sa esueze impreuna
     await prisma.$transaction([
       prisma.user.update({
         where: { id: user.id },
@@ -81,6 +84,7 @@ const buyAsset = async (req, res) => {
   }
 };
 
+// vinde un asset: verifica cantitatea detinuta, adauga banii si inregistreaza tranzactia
 const sellAsset = async (req, res) => {
   try {
     const { userId, assetId, quantity } = req.body;
@@ -137,6 +141,7 @@ const sellAsset = async (req, res) => {
   }
 };
 
+// returneaza istoricul tuturor tranzactiilor (buy/sell) ale unui utilizator
 const getTransactions = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -151,6 +156,7 @@ const getTransactions = async (req, res) => {
   }
 };
 
+// retrage fonduri din cont, calculand taxa in functie de metoda de retragere
 const withdrawFunds = async (req, res) => {
   try {
     const { userId, amount, method } = req.body;

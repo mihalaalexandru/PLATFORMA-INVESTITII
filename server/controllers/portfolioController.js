@@ -1,6 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
+// returneaza portofoliul unui utilizator, calculand profitul/pierderea pentru fiecare asset
 const getPortfolio = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -15,6 +16,7 @@ const getPortfolio = async (req, res) => {
       }
     });
 
+    // luam toate tranzactiile de cumparare, ca sa calculam pretul mediu de achizitie
     const transactions = await prisma.transaction.findMany({
       where: { 
         userId: parseInt(userId),
@@ -28,6 +30,7 @@ const getPortfolio = async (req, res) => {
       let totalCost = 0;
       let totalQuantity = 0;
 
+      // calculam costul total si cantitatea totala cumparata, pentru pretul mediu ponderat
       assetTransactions.forEach(t => {
         totalCost += t.priceAtPurchase * t.quantity;
         totalQuantity += t.quantity;
@@ -54,6 +57,7 @@ const getPortfolio = async (req, res) => {
   }
 };
 
+// returneaza istoricul soldului contului pentru graficul de evolutie a balantei
 const getBalanceHistory = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -63,6 +67,7 @@ const getBalanceHistory = async (req, res) => {
       orderBy: { date: 'asc' }
     });
 
+    // daca nu exista istoric, returnam soldul curent ca punct unic pe grafic
     if (history.length === 0) {
       const user = await prisma.user.findUnique({ where: { id: parseInt(userId) } });
       return res.json([{ 

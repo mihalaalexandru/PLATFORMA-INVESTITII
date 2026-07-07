@@ -16,6 +16,7 @@ function ResetPassword() {
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
+    // trimite parola noua catre server, folosind token-ul de resetare din URL
     e.preventDefault();
     try {
       const response = await axios.put(`http://localhost:3000/api/auth/resetpassword/${token}`, { password });

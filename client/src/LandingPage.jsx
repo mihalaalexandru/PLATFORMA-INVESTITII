@@ -7,6 +7,7 @@ function LandingPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    // daca userul e deja autentificat, il trimitem direct spre dashboard
     const token = localStorage.getItem('token');
     if (token) {
       navigate('/dashboard');

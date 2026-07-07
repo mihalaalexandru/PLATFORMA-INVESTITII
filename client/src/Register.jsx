@@ -34,11 +34,13 @@ export function Register() {
     setIsLogin(location.pathname === '/login');
     setErrors({});
 
+    // dupa login cu Google, daca userul are 2FA activat, serverul redirectioneaza aici cu userId
     const params = new URLSearchParams(location.search);
     if (params.get('requires2FA') === 'true' && params.get('userId')) {
       const uId = params.get('userId');
       const trustedToken = localStorage.getItem('trustedDeviceToken');
 
+      // daca avem un token de dispozitiv de incredere salvat, incercam login direct fara 2FA
       if (trustedToken) {
         axios.post('http://localhost:3000/api/auth/login/trusted', { userId: uId, trustedDeviceToken: trustedToken })
           .then(res => {
@@ -75,6 +77,7 @@ export function Register() {
     }
   };
 
+  // valideaza campurile formularului de login/inregistrare inainte de a trimite requestul
   const validateForm = () => {
     const newErrors = {};
 
@@ -103,6 +106,7 @@ export function Register() {
     return Object.keys(newErrors).length === 0;
   };
 
+  // trimite formularul catre server: inregistrare sau login, in functie de modul curent
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (validateForm()) {
@@ -126,6 +130,7 @@ export function Register() {
             trustedDeviceToken
           });
           
+          // daca serverul cere 2FA, afisam formularul de cod in loc sa continuam login-ul
           if (response.data.requires2FA) {
             setRequires2FA(true);
             setTempUserId(response.data.userId);
@@ -145,6 +150,7 @@ export function Register() {
     }
   };
 
+  // verifica codul 2FA introdus si finalizeaza autentificarea
   const handleVerify2FALogin = async (e) => {
     e.preventDefault();
     
@@ -176,6 +182,7 @@ export function Register() {
     }
   };
 
+  // redirectioneaza catre fluxul de autentificare Google al serverului
   const handleGoogleAuth = () => {
     window.location.href = 'http://localhost:3000/api/auth/google';
   };

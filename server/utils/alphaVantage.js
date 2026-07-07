@@ -4,6 +4,7 @@ const prisma = new PrismaClient();
 
 const ALPHA_VANTAGE_URL = 'https://www.alphavantage.co/query';
 
+// preia pretul curent al unui simbol de la API-ul Alpha Vantage si actualizeaza baza de date
 const fetchStockData = async (symbol) => {
   try {
     const apiKey = process.env.ALPHA_VANTAGE_API_KEY;

@@ -6,6 +6,8 @@ const sendEmail = require('../utils/sendEmail');
 
 const prisma = new PrismaClient();
 
+// porneste un job cron care ruleaza in fiecare minut pentru a verifica alertele de pret
+// si comenzile automate (auto orders), executandu-le cand conditiile sunt indeplinite
 const startPriceTracker = () => {
   cron.schedule('*/1 * * * *', async () => {
     try {
@@ -15,6 +17,7 @@ const startPriceTracker = () => {
         livePrices[a.symbol] = a.currentPrice;
       });
 
+      // verificam toate alertele de pret existente si le declansam daca conditia e indeplinita
       const alerts = await prisma.priceAlert.findMany({ include: { user: true } });
       for (const alert of alerts) {
         const currentPrice = livePrices[alert.symbol];
@@ -64,6 +67,7 @@ const startPriceTracker = () => {
         }
       }
 
+      // verificam comenzile automate PENDING si le executam daca pretul tinta a fost atins
       const pendingOrders = await prisma.autoOrder.findMany({ where: { status: 'PENDING' }, include: { user: true } });
       for (const order of pendingOrders) {
         const currentPrice = livePrices[order.symbol];
@@ -76,6 +80,7 @@ const startPriceTracker = () => {
         if (shouldExecute) {
           try {
             if (order.type === 'BUY') {
+              // executam BUY apeland ruta API interna de cumparare, cu un token temporar
               const token = jwt.sign({ userId: order.userId }, process.env.JWT_SECRET, { expiresIn: '15m' });
               const config = { headers: { Authorization: `Bearer ${token}` } };
               

@@ -1,5 +1,6 @@
 const nodemailer = require('nodemailer');
 
+// trimite un email folosind un cont Gmail, configurat din variabilele de mediu
 const sendEmail = async (options) => {
   const transporter = nodemailer.createTransport({
     service: 'gmail',

@@ -24,6 +24,7 @@ const {
 } = require('../controllers/authController');
 const { requireAuth } = require('../middleware/auth');
 
+// configurare Passport pentru autentificare cu Google OAuth2
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
@@ -42,6 +43,7 @@ passport.use(new GoogleStrategy({
 
       const photoUrl = profile.photos && profile.photos.length > 0 ? profile.photos[0].value : null;
 
+      // daca userul exista deja, completam googleId/poza lipsa; altfel il cream
       if (user) {
         if (!user.googleId || !user.profilePicture) {
           user = await prisma.user.update({
@@ -70,6 +72,7 @@ passport.use(new GoogleStrategy({
   }
 ));
 
+// rutele de autentificare de baza (inregistrare, login, resetare parola, 2FA)
 router.post('/register', register);
 router.post('/login', login);
 router.post('/forgotpassword', forgotPassword);
@@ -80,15 +83,18 @@ router.post('/2fa/disable', requireAuth, disable2FA);
 router.post('/login/2fa', verify2FALogin);
 router.post('/login/trusted', loginWithTrustedDevice);
 
+// rutele pentru gestionarea contului (profil, parola, stergere)
 router.put('/update-profile', requireAuth, updateUser);
 router.put('/change-password', requireAuth, changePassword);
 router.delete('/delete-account/:id', requireAuth, deleteAccount);
 router.delete('/cancel-registration/:token', cancelRegistration);
 
+// porneste fluxul de autentificare Google (redirectioneaza catre Google)
 router.get('/google',
   passport.authenticate('google', { scope: ['profile', 'email'], session: false })
 );
 
+// returneaza datele de profil ale unui utilizator dupa id
 router.get('/profile/:id', requireAuth, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
@@ -109,6 +115,7 @@ router.get('/profile/:id', requireAuth, async (req, res) => {
   }
 });
 
+// callback apelat de Google dupa autentificare; genereaza tokenul si redirectioneaza spre client
 router.get('/google/callback', 
   passport.authenticate('google', { session: false, failureRedirect: `http://localhost:5173/login` }),
   (req, res) => {

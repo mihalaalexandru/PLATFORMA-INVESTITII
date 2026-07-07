@@ -4,6 +4,7 @@ const prisma = new PrismaClient();
 
 const { getCandles } = require('../utils/marketSimulator');
 
+// returneaza toate activele disponibile (actiuni si criptomonede)
 const getAssets = async (req, res) => {
   try {
     const assets = await prisma.asset.findMany();
@@ -13,6 +14,7 @@ const getAssets = async (req, res) => {
   }
 };
 
+// returneaza istoricul de lumanari (candles) pentru un asset si un timeframe dat
 const getAssetHistory = async (req, res) => {
   try {
     const { id } = req.params;
@@ -35,6 +37,7 @@ const getAssetHistory = async (req, res) => {
   }
 };
 
+// preia ultimele stiri financiare de pe Yahoo Finance printr-un feed RSS convertit in JSON
 const getMarketNews = async (req, res) => {
   try {
     const response = await axios.get('https://api.rss2json.com/v1/api.json?rss_url=https://finance.yahoo.com/news/rssindex');

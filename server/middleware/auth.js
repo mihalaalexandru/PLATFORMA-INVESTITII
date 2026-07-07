@@ -1,8 +1,11 @@
 const jwt = require('jsonwebtoken');
 
+// middleware care verifica daca requestul are un token JWT valid in header
+// daca da, adauga userId-ul decodat pe req.user si lasa requestul sa continue
 const requireAuth = (req, res, next) => {
   const authHeader = req.headers.authorization;
 
+  // token-ul trebuie trimis ca "Bearer <token>"
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ message: 'Unauthorized' });
   }

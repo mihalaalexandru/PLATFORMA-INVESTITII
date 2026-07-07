@@ -10,6 +10,7 @@ function VerifyEmail() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    // trimite token-ul din URL catre server ca sa confirme schimbarea emailului
     const verifyToken = async () => {
       try {
         const response = await axios.put(`http://localhost:3000/api/auth/verify-email/${token}`);

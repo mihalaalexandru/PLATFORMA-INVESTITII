@@ -1,6 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
+// returneaza lista de urmarire (watchlist) a unui utilizator, cu detaliile activelor incluse
 const getWatchlist = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -14,6 +15,7 @@ const getWatchlist = async (req, res) => {
   }
 };
 
+// adauga/scoate un asset din watchlist (comuta starea in functie de existenta lui)
 const toggleWatchlist = async (req, res) => {
   try {
     const { userId, assetId } = req.body;

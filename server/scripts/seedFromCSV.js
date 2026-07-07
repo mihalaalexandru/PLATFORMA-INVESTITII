@@ -4,6 +4,7 @@ const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient();
 
+// citeste un fisier Excel (.xlsx) cu actiuni sau criptomonede si il transforma in lista de active
 const processExcel = (fileName, type) => {
   const filePath = path.join(__dirname, fileName);
   try {
@@ -15,6 +16,7 @@ const processExcel = (fileName, type) => {
     const assets = [];
 
     data.forEach((row, index) => {
+      // sarim peste randul de antet (header)
       if (index === 0 && (row[1] === 'Company' || row[0] === '1')) return;
 
       let name, symbol, price;
@@ -47,6 +49,7 @@ const processExcel = (fileName, type) => {
   }
 };
 
+// script principal: citeste fisierele Excel de actiuni si criptomonede si le insereaza in baza de date
 async function seed() {
   console.log('--- Incepem citirea fisierelor Excel (.xlsx) ---');
 

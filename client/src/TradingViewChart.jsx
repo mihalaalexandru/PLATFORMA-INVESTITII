@@ -4,7 +4,7 @@ import { createChart, CandlestickSeries, HistogramSeries, CrosshairMode } from '
 const TIMEFRAMES = ['20s', '1m', '5m', '15m', '1h', '4h', '1d'];
 const WS_URL = 'ws://localhost:3000';
 
-// Offset in seconds so the chart axis shows local time instead of UTC
+// decalaj in secunde ca axa graficului sa afiseze ora locala in loc de UTC
 const TZ_OFFSET_SEC = -new Date().getTimezoneOffset() * 60;
 const toLocal  = (t) => t + TZ_OFFSET_SEC;
 const fromLocal = (t) => t - TZ_OFFSET_SEC;
@@ -23,7 +23,7 @@ const TradingViewChart = ({ assetId, symbol }) => {
   const [timeframe, setTimeframe]   = useState('1m');
   const [lastCandle, setLastCandle] = useState(null);
 
-  // ── 1. Chart initialisation (once) ──────────────────────────────────────────
+  // ── 1. initializarea graficului (o singura data) ──────────────────────────
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -42,7 +42,7 @@ const TradingViewChart = ({ assetId, symbol }) => {
         horzLine: { color: '#848e9c', width: 1, style: 3, labelBackgroundColor: '#3b82f6' },
       },
       localization: {
-        // Show time in local timezone on crosshair label
+        // afisam ora in fusul orar local pe eticheta crosshair-ului
         timeFormatter: (unixSec) => {
           const d = new Date(fromLocal(unixSec) * 1000);
           return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -104,7 +104,7 @@ const TradingViewChart = ({ assetId, symbol }) => {
     };
   }, []);
 
-  // ── 2. Update secondsVisible when timeframe changes ──────────────────────────
+  // ── 2. actualizam secondsVisible cand se schimba timeframe-ul ──────────────────────────
   useEffect(() => {
     if (chartRef.current) {
       chartRef.current.applyOptions({
@@ -113,10 +113,11 @@ const TradingViewChart = ({ assetId, symbol }) => {
     }
   }, [timeframe]);
 
-  // ── 3. Load history + subscribe WebSocket whenever symbol/timeframe changes ─
+  // ── 3. incarcam istoricul si ne abonam la WebSocket de fiecare data cand se schimba simbolul/timeframe-ul ─
   const connect = useCallback(async (sym, tf) => {
     if (!sym || !candleRef.current) return;
 
+    // inchidem conexiunea WebSocket anterioara inainte de a deschide una noua
     if (wsRef.current) {
       wsRef.current.onclose = null;
       wsRef.current.close();
@@ -125,10 +126,11 @@ const TradingViewChart = ({ assetId, symbol }) => {
     clearTimeout(reconnectRef.current);
 
     try {
+      // incarcam istoricul de lumanari de la server pentru simbolul si timeframe-ul curent
       const res = await fetch(`http://localhost:3000/api/assets/history/${assetId}?timeframe=${tf}`);
       const candles = await res.json();
       if (candleRef.current && candles.length > 0) {
-        // Shift timestamps to local timezone so the axis shows local time
+        // convertim timestamp-urile in fusul orar local ca axa sa afiseze ora locala
         const localCandles = candles.map(c => ({ ...c, time: toLocal(c.time) }));
         candleRef.current.setData(localCandles);
         volumeRef.current.setData(
@@ -143,6 +145,7 @@ const TradingViewChart = ({ assetId, symbol }) => {
       }
     } catch (_) {}
 
+    // deschidem o conexiune WebSocket noua si ne abonam la actualizari live pentru acest simbol/timeframe
     const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
 
@@ -172,6 +175,7 @@ const TradingViewChart = ({ assetId, symbol }) => {
     };
 
     ws.onclose = () => {
+      // reconectam automat dupa 3 secunde, doar daca timeframe-ul nu s-a schimbat intre timp
       reconnectRef.current = setTimeout(() => {
         if (tfRef.current === tf) connect(sym, tf);
       }, 3000);
@@ -192,10 +196,10 @@ const TradingViewChart = ({ assetId, symbol }) => {
     };
   }, [symbol, assetId, timeframe, connect]);
 
-  // ── 4. Render ────────────────────────────────────────────────────────────────
+  // ── 4. randare ────────────────────────────────────────────────────────────────
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
-      {/* Timeframe bar */}
+      {/* bara de selectare a timeframe-ului */}
       <div style={{
         display: 'flex', gap: '4px', padding: '6px 10px',
         background: '#0b0e14', borderBottom: '1px solid #2b3139',
@@ -236,7 +240,7 @@ const TradingViewChart = ({ assetId, symbol }) => {
         )}
       </div>
 
-      {/* Chart area */}
+      {/* zona graficului propriu-zis */}
       <div ref={containerRef} style={{ flex: 1, width: '100%' }} />
     </div>
   );

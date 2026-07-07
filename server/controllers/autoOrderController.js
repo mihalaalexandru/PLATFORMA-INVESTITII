@@ -1,6 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
+// creeaza o comanda automata (BUY/SELL) care se executa cand pretul atinge tinta
 const createAutoOrder = async (req, res) => {
   try {
     const { userId, assetId, symbol, type, targetPrice, quantity } = req.body;
@@ -20,6 +21,7 @@ const createAutoOrder = async (req, res) => {
   }
 };
 
+// returneaza comenzile automate active (PENDING) ale unui utilizator
 const getAutoOrders = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -33,6 +35,7 @@ const getAutoOrders = async (req, res) => {
   }
 };
 
+// anuleaza (sterge) o comanda automata inainte sa fie executata
 const cancelAutoOrder = async (req, res) => {
   try {
     const { id } = req.params;
